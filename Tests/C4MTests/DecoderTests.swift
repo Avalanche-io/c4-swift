@@ -236,6 +236,58 @@ struct DecoderTests {
         #expect(m.layers.count == 1)
     }
 
+    @Test("Entries in @remove layer have inRemoveLayer set")
+    func removeLayerEntries() throws {
+        let input = """
+        @c4m 1.0
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 keep.txt
+        @remove
+        ---------- - 0 deleted.txt
+        ---------- - 0 also_deleted.txt
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries.count == 3)
+        #expect(!m.entries[0].inRemoveLayer)
+        #expect(m.entries[0].name == "keep.txt")
+        #expect(m.entries[1].inRemoveLayer)
+        #expect(m.entries[1].name == "deleted.txt")
+        #expect(m.entries[2].inRemoveLayer)
+        #expect(m.entries[2].name == "also_deleted.txt")
+    }
+
+    @Test("Entries after @end are not in remove layer")
+    func removeLayerEndsAtEnd() throws {
+        let input = """
+        @c4m 1.0
+        @remove
+        ---------- - 0 deleted.txt
+        @end
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 normal.txt
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries.count == 2)
+        #expect(m.entries[0].inRemoveLayer)
+        #expect(!m.entries[1].inRemoveLayer)
+    }
+
+    @Test("Remove layer round-trips through marshal/unmarshal")
+    func removeLayerRoundTrip() throws {
+        var builder = ManifestBuilder()
+        builder = builder.addFile("keep.txt", mode: .file644, size: 100)
+        builder = builder.remove("deleted.txt")
+        let manifest = builder.build()
+
+        let text = manifest.marshal()
+        let decoded = try Manifest.unmarshal(text)
+
+        let regular = decoded.entries.filter { !$0.inRemoveLayer }
+        let removals = decoded.entries.filter { $0.inRemoveLayer }
+        #expect(regular.count == 1)
+        #expect(regular[0].name == "keep.txt")
+        #expect(removals.count == 1)
+        #expect(removals[0].name == "deleted.txt")
+    }
+
     @Test("Symlink with quoted target containing spaces")
     func symlinkQuotedTarget() throws {
         let input = """

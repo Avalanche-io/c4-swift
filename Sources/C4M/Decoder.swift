@@ -59,7 +59,10 @@ public struct Decoder: Sendable {
                 continue
             }
 
-            let entry = try parseEntryLine(line)
+            var entry = try parseEntryLine(line)
+            if let idx = currentLayer, idx < manifest.layers.count, manifest.layers[idx].type == .remove {
+                entry.inRemoveLayer = true
+            }
             manifest.entries.append(entry)
         }
 

@@ -113,6 +113,52 @@ struct EncoderTests {
         }
     }
 
+    @Test("Remove entries are written after @remove directive")
+    func encodeRemoveEntries() {
+        var builder = ManifestBuilder()
+        builder = builder.addFile("keep.txt", mode: .file644, size: 100)
+        builder = builder.remove("deleted.txt")
+        let manifest = builder.build()
+
+        let output = manifest.marshal()
+        let lines = output.components(separatedBy: "\n")
+        let keepIdx = lines.firstIndex { $0.contains("keep.txt") }
+        let removeIdx = lines.firstIndex { $0.hasPrefix("@remove") }
+        let deletedIdx = lines.firstIndex { $0.contains("deleted.txt") }
+
+        #expect(keepIdx != nil)
+        #expect(removeIdx != nil)
+        #expect(deletedIdx != nil)
+        // keep.txt should be before @remove
+        #expect(keepIdx! < removeIdx!)
+        // deleted.txt should be after @remove
+        #expect(deletedIdx! > removeIdx!)
+    }
+
+    @Test("Remove entries not mixed with regular entries")
+    func encodeRemoveEntriesSeparated() {
+        var builder = ManifestBuilder()
+        builder = builder.addFile("a.txt", mode: .file644, size: 10)
+        builder = builder.addFile("b.txt", mode: .file644, size: 20)
+        builder = builder.remove("x.txt")
+        builder = builder.remove("y.txt")
+        let manifest = builder.build()
+
+        let output = manifest.marshal()
+        // All regular entries should appear before @remove
+        let lines = output.components(separatedBy: "\n")
+        let removeIdx = lines.firstIndex { $0.hasPrefix("@remove") }!
+        let beforeRemove = lines[..<removeIdx].joined()
+        let afterRemove = lines[(removeIdx + 1)...].joined()
+
+        #expect(beforeRemove.contains("a.txt"))
+        #expect(beforeRemove.contains("b.txt"))
+        #expect(!beforeRemove.contains("x.txt"))
+        #expect(!beforeRemove.contains("y.txt"))
+        #expect(afterRemove.contains("x.txt"))
+        #expect(afterRemove.contains("y.txt"))
+    }
+
     @Test("Encode indented entries")
     func encodeIndented() {
         var m = Manifest()

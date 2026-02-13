@@ -41,8 +41,12 @@ public struct Encoder: Sendable {
             c4IDColumn = calculateC4IDColumn(m, maxSize: maxSize)
         }
 
-        // Write entries
-        for entry in m.entries {
+        // Separate regular entries from remove-layer entries
+        let regularEntries = m.entries.filter { !$0.inRemoveLayer }
+        let removeEntries = m.entries.filter { $0.inRemoveLayer }
+
+        // Write regular entries
+        for entry in regularEntries {
             if pretty {
                 buf += formatEntryPretty(entry, maxSize: maxSize, c4IDColumn: c4IDColumn)
             } else {
@@ -51,9 +55,32 @@ public struct Encoder: Sendable {
             buf += "\n"
         }
 
-        // Write layers
-        for layer in m.layers {
+        // Write layers (non-remove layers first)
+        for layer in m.layers where layer.type != .remove {
             buf += writeLayer(layer)
+        }
+
+        // Write remove layer with its entries
+        if !removeEntries.isEmpty {
+            for layer in m.layers where layer.type == .remove {
+                buf += writeLayer(layer)
+            }
+            if m.layers.first(where: { $0.type == .remove }) == nil {
+                buf += "@remove\n"
+            }
+            for entry in removeEntries {
+                if pretty {
+                    buf += formatEntryPretty(entry, maxSize: maxSize, c4IDColumn: c4IDColumn)
+                } else {
+                    buf += entry.format(indentWidth: indentWidth)
+                }
+                buf += "\n"
+            }
+        } else {
+            // Write any remove layers even if no entries
+            for layer in m.layers where layer.type == .remove {
+                buf += writeLayer(layer)
+            }
         }
 
         return buf
