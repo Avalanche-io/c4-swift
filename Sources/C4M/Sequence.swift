@@ -149,104 +149,109 @@ public func expandSequencePattern(_ pattern: String) throws -> [String] {
 }
 
 /// Detect and collapse numbered file runs into sequence entries.
+/// Maintains the original entry order so depth-based hierarchy is preserved.
 public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manifest {
     let effectiveMin = max(2, minLength)
     let framePattern = try! NSRegularExpression(pattern: #"^(.*?)(\d+)(.*)$"#)
 
-    struct FileGroup {
+    struct FrameInfo {
+        var key: String
+        var frameNum: Int
+    }
+
+    struct GroupInfo {
         var prefix: String
         var suffix: String
-        var entries: [Int: (Entry, Int)] // frameNum -> (entry, original index)
         var padding: Int
+        var depth: Int
+        var frames: [(frameNum: Int, index: Int)]
     }
 
-    var groups: [String: FileGroup] = [:]
-    var result = Manifest(version: manifest.version)
+    // First pass: identify groups by scanning entries in order.
+    // Use depth in the key so files at different depths aren't merged.
+    var groups: [String: GroupInfo] = [:]
+    var entryFrame: [Int: FrameInfo] = [:]  // entry index -> frame info
 
     for (idx, entry) in manifest.entries.enumerated() {
-        if entry.isDir { continue }
+        if entry.isDir || entry.isSequence { continue }
 
-        // Extract basename and directory using simple string ops
-        let dir: String
-        let basename: String
-        if let slashIdx = entry.name.lastIndex(of: "/") {
-            dir = String(entry.name[...slashIdx])
-            basename = String(entry.name[entry.name.index(after: slashIdx)...])
-        } else {
-            dir = ""
-            basename = entry.name
-        }
+        let nsRange = NSRange(entry.name.startIndex ..< entry.name.endIndex, in: entry.name)
+        guard let match = framePattern.firstMatch(in: entry.name, range: nsRange) else { continue }
 
-        let nsRange = NSRange(basename.startIndex ..< basename.endIndex, in: basename)
-        guard let match = framePattern.firstMatch(in: basename, range: nsRange) else {
-            result.addEntry(entry)
-            continue
-        }
+        let prefixRange = Range(match.range(at: 1), in: entry.name)!
+        let numRange = Range(match.range(at: 2), in: entry.name)!
+        let suffixRange = Range(match.range(at: 3), in: entry.name)!
 
-        let prefixRange = Range(match.range(at: 1), in: basename)!
-        let numRange = Range(match.range(at: 2), in: basename)!
-        let suffixRange = Range(match.range(at: 3), in: basename)!
+        let prefix = String(entry.name[prefixRange])
+        let numStr = String(entry.name[numRange])
+        let suffix = String(entry.name[suffixRange])
 
-        let prefix = String(basename[prefixRange])
-        let numStr = String(basename[numRange])
-        let suffix = String(basename[suffixRange])
+        guard let frameNum = Int(numStr) else { continue }
 
-        guard let frameNum = Int(numStr) else {
-            result.addEntry(entry)
-            continue
-        }
-
-        let key = "\(dir)|\(prefix)|\(suffix)|\(numStr.count)"
+        let key = "\(entry.depth)|\(prefix)|\(suffix)|\(numStr.count)"
+        entryFrame[idx] = FrameInfo(key: key, frameNum: frameNum)
 
         if groups[key] == nil {
-            groups[key] = FileGroup(prefix: dir + prefix, suffix: suffix, entries: [:], padding: numStr.count)
+            groups[key] = GroupInfo(prefix: prefix, suffix: suffix, padding: numStr.count, depth: entry.depth, frames: [])
         }
-        groups[key]!.entries[frameNum] = (entry, idx)
+        groups[key]!.frames.append((frameNum, idx))
     }
 
-    for (_, group) in groups {
-        if group.entries.count < effectiveMin {
-            for (_, pair) in group.entries { result.addEntry(pair.0) }
-            continue
-        }
+    // Build replacement map: for groups that qualify, determine which entries
+    // to skip and where to insert the sequence entry (at the first member).
+    var skipIndices: Set<Int> = []
+    var insertAt: [Int: Entry] = [:]  // entry index -> sequence entry to insert
 
-        let frames = group.entries.keys.sorted()
-        let ranges = findRanges(frames)
+    for (_, group) in groups {
+        if group.frames.count < effectiveMin { continue }
+
+        let sortedFrames = group.frames.sorted { $0.frameNum < $1.frameNum }
+        let frameNums = sortedFrames.map(\.frameNum)
+        let ranges = findRanges(frameNums)
+
+        // Build a lookup from frameNum to original entry index
+        var frameToIdx: [Int: Int] = [:]
+        for f in sortedFrames { frameToIdx[f.frameNum] = f.index }
 
         for r in ranges {
+            let indicesInRange = (r.start ... r.end).compactMap { frameToIdx[$0] }
             if r.count >= effectiveMin {
                 let pattern = "\(group.prefix)[\(String(format: "%0\(group.padding)d", r.start))-\(String(format: "%0\(group.padding)d", r.end))]\(group.suffix)"
 
                 var totalSize: Int64 = 0
                 var latestTime = Date.distantPast
-
-                for i in r.start ... r.end {
-                    guard let (entry, _) = group.entries[i] else { continue }
+                for idx in indicesInRange {
+                    let entry = manifest.entries[idx]
                     totalSize += entry.size
                     if entry.timestamp > latestTime { latestTime = entry.timestamp }
                 }
 
-                let firstEntry = group.entries[r.start]!.0
+                let firstEntry = manifest.entries[indicesInRange.min()!]
                 let seqEntry = Entry(
                     mode: firstEntry.mode,
                     timestamp: latestTime,
                     size: totalSize,
                     name: pattern,
-                    depth: firstEntry.depth,
+                    depth: group.depth,
                     isSequence: true,
                     pattern: pattern
                 )
-                result.addEntry(seqEntry)
-            } else {
-                for i in r.start ... r.end {
-                    if let (entry, _) = group.entries[i] { result.addEntry(entry) }
-                }
+
+                // Insert sequence entry at the position of the first member
+                let firstIdx = indicesInRange.min()!
+                insertAt[firstIdx] = seqEntry
+                for idx in indicesInRange { skipIndices.insert(idx) }
             }
         }
     }
 
-    // Add directory entries
-    for entry in manifest.entries where entry.isDir {
+    // Second pass: emit entries in original order, replacing sequences in-place.
+    var result = Manifest(version: manifest.version)
+    for (idx, entry) in manifest.entries.enumerated() {
+        if let seqEntry = insertAt[idx] {
+            result.addEntry(seqEntry)
+        }
+        if skipIndices.contains(idx) { continue }
         result.addEntry(entry)
     }
 
