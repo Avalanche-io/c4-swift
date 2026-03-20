@@ -1,6 +1,7 @@
 import Foundation
 
 /// Writes manifests to the C4M text format.
+/// Output is entry-only: no header, no directives.
 public struct Encoder: Sendable {
 
     /// Enable pretty-printing (aligned columns, comma sizes, local timestamps).
@@ -15,21 +16,10 @@ public struct Encoder: Sendable {
     }
 
     /// Encode a manifest to its C4M text representation.
+    /// Entry-only: no header, no directives.
     public func encode(_ manifest: Manifest) -> String {
         var m = manifest
         m.sortEntries()
-
-        var buf = "@c4m \(m.version)\n"
-
-        // Write metadata
-        if !m.data.isNil {
-            buf += "@data \(m.data.string)\n"
-        }
-
-        // Write base
-        if !m.base.isNil {
-            buf += "@base \(m.base.string)\n"
-        }
 
         // Compute formatting parameters for pretty mode
         var maxSize: Int64 = 0
@@ -41,12 +31,10 @@ public struct Encoder: Sendable {
             c4IDColumn = calculateC4IDColumn(m, maxSize: maxSize)
         }
 
-        // Separate regular entries from remove-layer entries
-        let regularEntries = m.entries.filter { !$0.inRemoveLayer }
-        let removeEntries = m.entries.filter { $0.inRemoveLayer }
+        var buf = ""
 
-        // Write regular entries
-        for entry in regularEntries {
+        // Write entries
+        for entry in m.entries {
             if pretty {
                 buf += formatEntryPretty(entry, maxSize: maxSize, c4IDColumn: c4IDColumn)
             } else {
@@ -55,57 +43,15 @@ public struct Encoder: Sendable {
             buf += "\n"
         }
 
-        // Write layers (non-remove layers first)
-        for layer in m.layers where layer.type != .remove {
-            buf += writeLayer(layer)
-        }
-
-        // Write remove layer with its entries
-        if !removeEntries.isEmpty {
-            for layer in m.layers where layer.type == .remove {
-                buf += writeLayer(layer)
-            }
-            if m.layers.first(where: { $0.type == .remove }) == nil {
-                buf += "@remove\n"
-            }
-            for entry in removeEntries {
-                if pretty {
-                    buf += formatEntryPretty(entry, maxSize: maxSize, c4IDColumn: c4IDColumn)
-                } else {
-                    buf += entry.format(indentWidth: indentWidth)
+        // Write inline range data lines (bare-concatenated ID lists).
+        if !m.rangeData.isEmpty {
+            let sortedKeys = m.rangeData.keys.sorted { $0.string < $1.string }
+            for key in sortedKeys {
+                if let line = m.rangeData[key] {
+                    buf += line
+                    buf += "\n"
                 }
-                buf += "\n"
             }
-        } else {
-            // Write any remove layers even if no entries
-            for layer in m.layers where layer.type == .remove {
-                buf += writeLayer(layer)
-            }
-        }
-
-        return buf
-    }
-
-    // MARK: - Layer Output
-
-    private func writeLayer(_ layer: Layer) -> String {
-        var buf = ""
-        switch layer.type {
-        case .add:    buf += "@layer\n"
-        case .remove: buf += "@remove\n"
-        }
-
-        if !layer.by.isEmpty {
-            buf += "@by \(layer.by)\n"
-        }
-        if let t = layer.time {
-            buf += "@time \(Entry.canonicalTimestamp(t))\n"
-        }
-        if !layer.note.isEmpty {
-            buf += "@note \(layer.note)\n"
-        }
-        if !layer.data.isNil {
-            buf += "@data \(layer.data.string)\n"
         }
 
         return buf
@@ -120,12 +66,18 @@ public struct Encoder: Sendable {
         for entry in m.entries {
             let indent = entry.depth * indentWidth
             let modeLen = 10
-            let timeLen = 24 // approximate pretty timestamp width
-            let nameLen = Entry.formatName(entry.name).count
+            let timeLen = 24
+            let nameLen = Entry.formatName(entry.name, isSequence: entry.isSequence).count
             var lineLen = indent + modeLen + 1 + timeLen + 1 + maxSizeWidth + 1 + nameLen
+
             if !entry.target.isEmpty {
                 lineLen += 4 + entry.target.count
+            } else if entry.hardLink != 0 {
+                lineLen += entry.hardLink < 0 ? 3 : 4
+            } else if entry.flowDirection != .none {
+                lineLen += 1 + entry.flowDirection.operatorString.count + 1 + entry.flowTarget.count
             }
+
             if lineLen > maxLen { maxLen = lineLen }
         }
 
@@ -159,22 +111,33 @@ public struct Encoder: Sendable {
             sizeStr = formatSizePretty(entry.size, maxSize: maxSize)
         }
 
-        let nameStr = Entry.formatName(entry.name)
+        let nameStr = Entry.formatName(entry.name, isSequence: entry.isSequence)
 
         var parts = [indent + modeStr, timeStr, sizeStr, nameStr]
+
+        // Link operators
         if !entry.target.isEmpty {
             parts.append("->")
             parts.append(Entry.formatTarget(entry.target))
+        } else if entry.hardLink != 0 {
+            if entry.hardLink < 0 {
+                parts.append("->")
+            } else {
+                parts.append("->\(entry.hardLink)")
+            }
+        } else if entry.flowDirection != .none {
+            parts.append(entry.flowDirection.operatorString)
+            parts.append(entry.flowTarget)
         }
 
         let baseLine = parts.joined(separator: " ")
 
-        if !entry.c4id.isNil {
-            let padding = max(10, c4IDColumn - baseLine.count)
-            return baseLine + String(repeating: " ", count: padding) + entry.c4id.string
+        // C4 ID or "-" always last, with column alignment
+        let padding = max(10, c4IDColumn - baseLine.count)
+        if let id = entry.c4id, !id.isNil {
+            return baseLine + String(repeating: " ", count: padding) + id.string
         }
-
-        return baseLine
+        return baseLine + String(repeating: " ", count: padding) + "-"
     }
 
     private func formatTimestampPretty(_ date: Date) -> String {
@@ -196,7 +159,7 @@ public struct Encoder: Sendable {
 // MARK: - Convenience
 
 extension Manifest {
-    /// Encode to canonical C4M string.
+    /// Encode to C4M string.
     public func marshal() -> String {
         Encoder().encode(self)
     }

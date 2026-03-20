@@ -5,33 +5,30 @@ import Foundation
 @Suite("Decoder Tests")
 struct DecoderTests {
 
-    @Test("Parse basic manifest")
+    @Test("Parse basic entry")
     func parseBasic() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -
         """
         let m = try Manifest.unmarshal(input)
-        #expect(m.version == "1.0")
         #expect(m.entries.count == 1)
         #expect(m.entries[0].name == "file.txt")
         #expect(m.entries[0].size == 100)
         #expect(m.entries[0].mode == FileMode(string: "-rw-r--r--"))
     }
 
-    @Test("Parse empty manifest")
+    @Test("Parse empty input")
     func parseEmpty() throws {
-        let m = try Manifest.unmarshal("@c4m 1.0")
+        let m = try Manifest.unmarshal("")
         #expect(m.entries.isEmpty)
     }
 
     @Test("Parse multiple entries")
     func parseMultiple() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 file1.txt
-        -rw-r--r-- 2024-01-01T00:00:00Z 200 file2.txt
-        drwxr-xr-x 2024-01-01T00:00:00Z 0 dir/
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file1.txt -
+        -rw-r--r-- 2024-01-01T00:00:00Z 200 file2.txt -
+        drwxr-xr-x 2024-01-01T00:00:00Z 0 dir/ -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries.count == 3)
@@ -40,8 +37,7 @@ struct DecoderTests {
     @Test("Parse directory entry")
     func parseDirectory() throws {
         let input = """
-        @c4m 1.0
-        drwxr-xr-x 2024-01-01T00:00:00Z 4096 src/
+        drwxr-xr-x 2024-01-01T00:00:00Z 4096 src/ -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].isDir)
@@ -51,8 +47,7 @@ struct DecoderTests {
     @Test("Parse symlink entry")
     func parseSymlink() throws {
         let input = """
-        @c4m 1.0
-        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> target
+        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> target -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].isSymlink)
@@ -63,18 +58,16 @@ struct DecoderTests {
     @Test("Parse symlink to absolute path")
     func parseSymlinkAbsolute() throws {
         let input = """
-        @c4m 1.0
-        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /absolute/path/target
+        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> /absolute/path/target -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].target == "/absolute/path/target")
     }
 
-    @Test("Parse quoted filename with spaces")
-    func parseQuotedFilename() throws {
+    @Test("Parse backslash-escaped filename with spaces")
+    func parseEscapedFilename() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 2048 "my file.txt"
+        -rw-r--r-- 2024-01-01T00:00:00Z 2048 my\\ file.txt -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].name == "my file.txt")
@@ -82,77 +75,36 @@ struct DecoderTests {
 
     @Test("Parse indented entry")
     func parseIndented() throws {
-        let input = "@c4m 1.0\ndrwxr-xr-x 2024-01-01T00:00:00Z 0 dir/\n  -rw-r--r-- 2024-01-01T00:00:00Z 512 nested.txt"
+        let input = "drwxr-xr-x 2024-01-01T00:00:00Z 0 dir/ -\n  -rw-r--r-- 2024-01-01T00:00:00Z 512 nested.txt -"
         let m = try Manifest.unmarshal(input)
         #expect(m.entries.count == 2)
         #expect(m.entries[1].depth == 1)
         #expect(m.entries[1].name == "nested.txt")
     }
 
-    @Test("Parse base directive")
+    @Test("Bare C4 ID on first line sets base")
     func parseBase() throws {
+        let id = C4ID.identify(string: "base manifest")
         let input = """
-        @c4m 1.0
-        @base c41HX1X4uedbqHB72FCDXFnifrN1PTWfFZfV2Hh6y3RE9dUy5wJrgzmf9tWnyR9B29AvoJsKNd7RhFbxbumvBtSjtN
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt
+        \(id.string)
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -
         """
         let m = try Manifest.unmarshal(input)
-        #expect(!m.base.isNil)
+        #expect(m.base != nil)
+        #expect(m.base == id)
     }
 
-    @Test("Parse layer directives")
-    func parseLayers() throws {
-        let input = """
-        @c4m 1.0
-        @layer
-        @by Jane Smith
-        @note Security update
-        """
-        let m = try Manifest.unmarshal(input)
-        #expect(m.layers.count == 1)
-        #expect(m.layers[0].type == .add)
-        #expect(m.layers[0].by == "Jane Smith")
-        #expect(m.layers[0].note == "Security update")
-    }
-
-    @Test("Parse remove directive")
-    func parseRemove() throws {
-        let input = """
-        @c4m 1.0
-        @remove
-        @by Admin
-        """
-        let m = try Manifest.unmarshal(input)
-        #expect(m.layers.count == 1)
-        #expect(m.layers[0].type == .remove)
-    }
-
-    @Test("Invalid header rejected")
-    func invalidHeader() {
+    @Test("Directive lines rejected")
+    func directiveRejected() {
         #expect(throws: C4MError.self) {
-            try Manifest.unmarshal("not a c4m file\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt")
-        }
-    }
-
-    @Test("Unsupported version rejected")
-    func unsupportedVersion() {
-        #expect(throws: C4MError.self) {
-            try Manifest.unmarshal("@c4m 2.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt")
-        }
-    }
-
-    @Test("Empty input rejected")
-    func emptyInput() {
-        #expect(throws: C4MError.self) {
-            try Manifest.unmarshal("")
+            try Manifest.unmarshal("@c4m 1.0\n-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -")
         }
     }
 
     @Test("Parse null mode (single dash)")
     func parseNullMode() throws {
         let input = """
-        @c4m 1.0
-        - 2024-01-01T00:00:00Z 100 file.txt
+        - 2024-01-01T00:00:00Z 100 file.txt -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].mode.isNull)
@@ -161,8 +113,7 @@ struct DecoderTests {
     @Test("Parse null timestamp (dash)")
     func parseNullTimestamp() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- - 100 file.txt
+        -rw-r--r-- - 100 file.txt -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].timestamp == Entry.nullTimestamp)
@@ -171,8 +122,7 @@ struct DecoderTests {
     @Test("Parse null size (dash)")
     func parseNullSize() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z - file.txt
+        -rw-r--r-- 2024-01-01T00:00:00Z - file.txt -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].size == -1)
@@ -182,18 +132,25 @@ struct DecoderTests {
     func parseWithC4ID() throws {
         let id = C4ID.identify(string: "test content")
         let input = """
-        @c4m 1.0
         -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt \(id.string)
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].c4id == id)
     }
 
+    @Test("Parse entry with null C4 ID dash")
+    func parseNullC4ID() throws {
+        let input = """
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].c4id == nil)
+    }
+
     @Test("Parse entry with size containing commas")
     func parseSizeWithCommas() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 1,234,567 file.txt
+        -rw-r--r-- 2024-01-01T00:00:00Z 1,234,567 file.txt -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].size == 1234567)
@@ -202,99 +159,87 @@ struct DecoderTests {
     @Test("Parse timestamp with timezone offset")
     func parseTimezoneOffset() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T10:30:00-07:00 100 file.txt
+        -rw-r--r-- 2024-01-01T10:30:00-07:00 100 file.txt -
         """
         let m = try Manifest.unmarshal(input)
-        // Should be converted to UTC: 17:30:00Z
-        let expected = Date(timeIntervalSince1970: 1704130200) // 2024-01-01T17:30:00Z
+        let expected = Date(timeIntervalSince1970: 1704130200)
         #expect(abs(m.entries[0].timestamp.timeIntervalSince(expected)) < 1)
     }
 
     @Test("Sequence notation detected")
     func sequenceDetected() throws {
         let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 10000 frame.[0001-0100].exr
+        -rw-r--r-- 2024-01-01T00:00:00Z 10000 frame.[0001-0100].exr -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].isSequence)
         #expect(m.entries[0].pattern == "frame.[0001-0100].exr")
     }
 
-    @Test("@end resets current layer")
-    func endDirective() throws {
+    @Test("Symlink with escaped target containing spaces")
+    func symlinkEscapedTarget() throws {
         let input = """
-        @c4m 1.0
-        @layer
-        @by Editor
-        @end
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 main.txt
-        """
-        let m = try Manifest.unmarshal(input)
-        #expect(m.entries.count == 1)
-        #expect(m.layers.count == 1)
-    }
-
-    @Test("Entries in @remove layer have inRemoveLayer set")
-    func removeLayerEntries() throws {
-        let input = """
-        @c4m 1.0
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 keep.txt
-        @remove
-        ---------- - 0 deleted.txt
-        ---------- - 0 also_deleted.txt
-        """
-        let m = try Manifest.unmarshal(input)
-        #expect(m.entries.count == 3)
-        #expect(!m.entries[0].inRemoveLayer)
-        #expect(m.entries[0].name == "keep.txt")
-        #expect(m.entries[1].inRemoveLayer)
-        #expect(m.entries[1].name == "deleted.txt")
-        #expect(m.entries[2].inRemoveLayer)
-        #expect(m.entries[2].name == "also_deleted.txt")
-    }
-
-    @Test("Entries after @end are not in remove layer")
-    func removeLayerEndsAtEnd() throws {
-        let input = """
-        @c4m 1.0
-        @remove
-        ---------- - 0 deleted.txt
-        @end
-        -rw-r--r-- 2024-01-01T00:00:00Z 100 normal.txt
-        """
-        let m = try Manifest.unmarshal(input)
-        #expect(m.entries.count == 2)
-        #expect(m.entries[0].inRemoveLayer)
-        #expect(!m.entries[1].inRemoveLayer)
-    }
-
-    @Test("Remove layer round-trips through marshal/unmarshal")
-    func removeLayerRoundTrip() throws {
-        var builder = ManifestBuilder()
-        builder = builder.addFile("keep.txt", mode: .file644, size: 100)
-        builder = builder.remove("deleted.txt")
-        let manifest = builder.build()
-
-        let text = manifest.marshal()
-        let decoded = try Manifest.unmarshal(text)
-
-        let regular = decoded.entries.filter { !$0.inRemoveLayer }
-        let removals = decoded.entries.filter { $0.inRemoveLayer }
-        #expect(regular.count == 1)
-        #expect(regular[0].name == "keep.txt")
-        #expect(removals.count == 1)
-        #expect(removals[0].name == "deleted.txt")
-    }
-
-    @Test("Symlink with quoted target containing spaces")
-    func symlinkQuotedTarget() throws {
-        let input = """
-        @c4m 1.0
-        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> "target with spaces"
+        lrwxrwxrwx 2024-01-01T00:00:00Z 0 link -> target\\ with\\ spaces -
         """
         let m = try Manifest.unmarshal(input)
         #expect(m.entries[0].target == "target with spaces")
+    }
+
+    @Test("Parse hard link ungrouped")
+    func parseHardLinkUngrouped() throws {
+        let id = C4ID.identify(string: "content")
+        let input = """
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -> \(id.string)
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].hardLink == -1)
+        #expect(m.entries[0].c4id == id)
+    }
+
+    @Test("Parse hard link group")
+    func parseHardLinkGroup() throws {
+        let id = C4ID.identify(string: "content")
+        let input = """
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt ->2 \(id.string)
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].hardLink == 2)
+    }
+
+    @Test("Parse flow link outbound")
+    func parseFlowOutbound() throws {
+        let input = """
+        drwxr-xr-x 2024-01-01T00:00:00Z 4096 outbox/ -> studio:inbox/ -
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].flowDirection == .outbound)
+        #expect(m.entries[0].flowTarget == "studio:inbox/")
+    }
+
+    @Test("Parse flow link inbound")
+    func parseFlowInbound() throws {
+        let input = """
+        drwxr-xr-x 2024-01-01T00:00:00Z 4096 inbox/ <- nas:renders/ -
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].flowDirection == .inbound)
+        #expect(m.entries[0].flowTarget == "nas:renders/")
+    }
+
+    @Test("Parse flow link bidirectional")
+    func parseFlowBidirectional() throws {
+        let input = """
+        drwxr-xr-x 2024-01-01T00:00:00Z 4096 shared/ <> peer:shared/ -
+        """
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries[0].flowDirection == .bidirectional)
+        #expect(m.entries[0].flowTarget == "peer:shared/")
+    }
+
+    @Test("CR character rejected")
+    func crRejected() {
+        #expect(throws: C4MError.self) {
+            try Manifest.unmarshal("-rw-r--r-- 2024-01-01T00:00:00Z 100 file.txt -\r\n")
+        }
     }
 }

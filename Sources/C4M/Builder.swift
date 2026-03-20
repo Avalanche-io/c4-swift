@@ -4,10 +4,6 @@ import Foundation
 public final class ManifestBuilder: @unchecked Sendable {
 
     private var manifest: Manifest
-    private var layerBy: String = ""
-    private var layerNote: String = ""
-    private var layerTime: Date?
-    private var removals: [String] = []
 
     public init() {
         self.manifest = Manifest()
@@ -26,42 +22,6 @@ public final class ManifestBuilder: @unchecked Sendable {
         return self
     }
 
-    /// Set the author for layer metadata.
-    @discardableResult
-    public func by(_ author: String) -> ManifestBuilder {
-        layerBy = author
-        return self
-    }
-
-    /// Set the note for layer metadata.
-    @discardableResult
-    public func note(_ note: String) -> ManifestBuilder {
-        layerNote = note
-        return self
-    }
-
-    /// Set the timestamp for layer metadata.
-    @discardableResult
-    public func at(_ timestamp: Date) -> ManifestBuilder {
-        layerTime = timestamp
-        return self
-    }
-
-    /// Queue a path for removal.
-    @discardableResult
-    public func remove(_ path: String) -> ManifestBuilder {
-        removals.append(path)
-        return self
-    }
-
-    /// Queue a directory for removal (ensures trailing slash).
-    @discardableResult
-    public func removeDir(_ path: String) -> ManifestBuilder {
-        let p = path.hasSuffix("/") ? path : path + "/"
-        removals.append(p)
-        return self
-    }
-
     // MARK: - Adding Entries
 
     /// Add a file at the root level.
@@ -71,7 +31,7 @@ public final class ManifestBuilder: @unchecked Sendable {
         mode: FileMode = .file644,
         timestamp: Date = Date(timeIntervalSince1970: 0),
         size: Int64 = 0,
-        c4id: C4ID = .void
+        c4id: C4ID? = nil
     ) -> ManifestBuilder {
         manifest.addEntry(Entry(
             mode: mode,
@@ -90,7 +50,7 @@ public final class ManifestBuilder: @unchecked Sendable {
         mode: FileMode = .dir755,
         timestamp: Date = Date(timeIntervalSince1970: 0),
         size: Int64 = 0,
-        c4id: C4ID = .void
+        c4id: C4ID? = nil
     ) -> DirBuilder {
         let dirName = name.hasSuffix("/") ? name : name + "/"
         let entry = Entry(
@@ -109,13 +69,6 @@ public final class ManifestBuilder: @unchecked Sendable {
 
     /// Construct the manifest.
     public func build() -> Manifest {
-        if !removals.isEmpty {
-            let layer = Layer(type: .remove, by: layerBy, time: layerTime, note: layerNote)
-            manifest.layers.append(layer)
-            for path in removals {
-                manifest.addEntry(Entry(name: path, depth: 0, inRemoveLayer: true))
-            }
-        }
         return manifest
     }
 
@@ -146,7 +99,7 @@ public final class DirBuilder: @unchecked Sendable {
         mode: FileMode = .file644,
         timestamp: Date = Date(timeIntervalSince1970: 0),
         size: Int64 = 0,
-        c4id: C4ID = .void
+        c4id: C4ID? = nil
     ) -> DirBuilder {
         root.appendEntry(Entry(
             mode: mode,
@@ -165,7 +118,7 @@ public final class DirBuilder: @unchecked Sendable {
         mode: FileMode = .dir755,
         timestamp: Date = Date(timeIntervalSince1970: 0),
         size: Int64 = 0,
-        c4id: C4ID = .void
+        c4id: C4ID? = nil
     ) -> DirBuilder {
         let dirName = name.hasSuffix("/") ? name : name + "/"
         root.appendEntry(Entry(

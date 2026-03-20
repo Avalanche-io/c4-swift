@@ -27,7 +27,7 @@ struct BuilderTests {
             .end()
             .build()
 
-        #expect(m.entries.count == 4) // root.txt, src/, main.swift, utils.swift
+        #expect(m.entries.count == 4)
     }
 
     @Test("Build manifest with nested directories")
@@ -41,8 +41,7 @@ struct BuilderTests {
             .end()
             .build()
 
-        #expect(m.entries.count == 4) // src/, lib/, core.swift, app.swift
-        // Check depths
+        #expect(m.entries.count == 4)
         let srcEntry = m.entries.first { $0.name == "src/" }
         let libEntry = m.entries.first { $0.name == "lib/" }
         let coreEntry = m.entries.first { $0.name == "core.swift" }
@@ -51,31 +50,15 @@ struct BuilderTests {
         #expect(coreEntry?.depth == 2)
     }
 
-    @Test("Build manifest with removals")
-    func buildWithRemovals() {
+    @Test("Build manifest with base ID")
+    func buildWithBase() {
+        let baseID = C4ID.identify(string: "base")
         let m = ManifestBuilder()
-            .withBaseID(C4ID.identify(string: "base"))
-            .remove("old-file.txt")
-            .removeDir("deprecated")
+            .withBaseID(baseID)
+            .addFile("file.txt", size: 100)
             .build()
 
-        #expect(!m.base.isNil)
-        #expect(m.layers.count == 1)
-        #expect(m.layers[0].type == .remove)
-        #expect(m.removals.count == 2)
-    }
-
-    @Test("Build manifest with metadata")
-    func buildWithMetadata() {
-        let m = ManifestBuilder()
-            .withBaseID(C4ID.identify(string: "base"))
-            .by("Author")
-            .note("Test note")
-            .remove("file.txt")
-            .build()
-
-        #expect(m.layers[0].by == "Author")
-        #expect(m.layers[0].note == "Test note")
+        #expect(m.base == baseID)
     }
 
     @Test("Build manifest with C4 IDs")
@@ -98,17 +81,6 @@ struct BuilderTests {
 
         let dir = m.entries.first { $0.isDir }
         #expect(dir?.name == "notrailingslash/")
-    }
-
-    @Test("RemoveDir ensures trailing slash")
-    func removeDirTrailingSlash() {
-        let m = ManifestBuilder()
-            .withBaseID(C4ID.identify(string: "base"))
-            .removeDir("mydir")
-            .build()
-
-        let removals = m.removals
-        #expect(removals.contains("mydir/"))
     }
 
     @Test("Build from existing manifest")
