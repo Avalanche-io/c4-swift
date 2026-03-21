@@ -100,7 +100,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
 
     /// True if any metadata field holds a null sentinel.
     public var hasNullValues: Bool {
-        let nullMode = mode.isNull && !isDir && !isSymlink
+        let nullMode = mode.isNull && !isDir && !isSymlink && !mode.isNamedPipe && !mode.isSocket && !mode.isBlock && !mode.isChar
         let nullTimestamp = timestamp == Entry.nullTimestamp
         let nullSize = size < 0
         return nullMode || nullTimestamp || nullSize

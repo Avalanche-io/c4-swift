@@ -38,7 +38,8 @@ public struct Encoder: Sendable {
             if pretty {
                 buf += formatEntryPretty(entry, maxSize: maxSize, c4IDColumn: c4IDColumn)
             } else {
-                buf += entry.format(indentWidth: indentWidth)
+                let indent = String(repeating: " ", count: entry.depth * indentWidth)
+                buf += indent + entry.canonical
             }
             buf += "\n"
         }

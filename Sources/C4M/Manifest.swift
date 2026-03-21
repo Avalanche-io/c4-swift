@@ -1,8 +1,5 @@
 import Foundation
 
-/// The canonical C4M timestamp format.
-public let timestampFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-
 /// Represents a complete C4 manifest.
 public struct Manifest: Sendable, Codable {
 
@@ -59,7 +56,8 @@ public struct Manifest: Sendable, Codable {
     /// Return the full path of an entry.
     public func entryPath(_ entry: Entry) -> String? {
         let idx = ensureIndex()
-        return idx.pathOf[entry.indexKey]
+        guard let i = idx.entryIndex[entry.indexKey] else { return nil }
+        return idx.pathOf[entries[i].indexKeyAt(i)]
     }
 
     /// Return entries at a given depth.
@@ -193,9 +191,6 @@ public struct Manifest: Sendable, Codable {
     public mutating func canonicalize() {
         propagateMetadata()
     }
-
-    /// Deep copy.
-    public func copy() -> Manifest { self }
 
     /// True if any entries have null metadata.
     public var hasNullValues: Bool { entries.contains { $0.hasNullValues } }
@@ -382,6 +377,7 @@ public struct Manifest: Sendable, Codable {
         // Build entry index mapping
         for (i, e) in entries.enumerated() {
             idx.entryIndex[e.indexKeyAt(i)] = i
+            idx.entryIndex[e.indexKey] = i
             idx.byName[e.name] = e
         }
 
