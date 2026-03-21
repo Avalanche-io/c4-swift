@@ -41,8 +41,8 @@ The package name is `C4`, the library product is `C4`, and the module/target nam
 
 ```bash
 # Clone
-git clone https://github.com/Avalanche-io/c4m-swift.git
-cd c4m-swift
+git clone https://github.com/Avalanche-io/c4-swift.git
+cd c4-swift
 
 # Build
 swift build
