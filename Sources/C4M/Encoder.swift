@@ -90,12 +90,7 @@ public struct Encoder: Sendable {
     private func formatEntryPretty(_ entry: Entry, maxSize: Int64, c4IDColumn: Int) -> String {
         let indent = String(repeating: " ", count: entry.depth * indentWidth)
 
-        let modeStr: String
-        if entry.mode.isNull && !entry.isDir && !entry.isSymlink {
-            modeStr = "----------"
-        } else {
-            modeStr = entry.mode.description
-        }
+        let modeStr = entry.mode.description
 
         let timeStr: String
         if entry.timestamp == Entry.nullTimestamp {

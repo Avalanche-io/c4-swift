@@ -100,10 +100,9 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
 
     /// True if any metadata field holds a null sentinel.
     public var hasNullValues: Bool {
-        let nullMode = mode.isNull && !isDir && !isSymlink && !mode.isNamedPipe && !mode.isSocket && !mode.isBlock && !mode.isChar
         let nullTimestamp = timestamp == Entry.nullTimestamp
         let nullSize = size < 0
-        return nullMode || nullTimestamp || nullSize
+        return mode.isNull || nullTimestamp || nullSize
     }
 
     /// The Unix epoch sentinel used for null/unspecified timestamps.
@@ -114,9 +113,10 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// Canonical form (no indentation, single spaces, no commas in sizes).
     /// Null mode renders as "-" (single dash), C4 ID or "-" always last.
     public var canonical: String {
-        // Mode: null renders as single dash
+        // Mode: null renders as single dash regardless of entry type.
+        // Directory-ness comes from trailing "/" in name, not mode.
         let modeStr: String
-        if mode.isNull && !isDir && !isSymlink {
+        if mode.isNull {
             modeStr = "-"
         } else {
             modeStr = mode.description
@@ -157,12 +157,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     public func format(indentWidth: Int = 0, displayFormat: Bool = false) -> String {
         let indent = String(repeating: " ", count: depth * indentWidth)
 
-        let modeStr: String
-        if mode.isNull && !isDir && !isSymlink {
-            modeStr = "----------"
-        } else {
-            modeStr = mode.description
-        }
+        let modeStr = mode.description
 
         let timeStr: String
         if timestamp == Entry.nullTimestamp {
