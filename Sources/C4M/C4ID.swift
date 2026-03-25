@@ -61,10 +61,65 @@ public struct C4ID: Sendable, Hashable, Codable, CustomStringConvertible {
         identify(data: Data(string.utf8))
     }
 
+    /// Compute the C4 ID of the given data, with c4m-aware canonicalization.
+    ///
+    /// If the data parses as a valid c4m file, the ID is computed from the
+    /// canonical form rather than the raw bytes. This ensures that a
+    /// pretty-printed c4m and its canonical equivalent produce the same ID.
+    ///
+    /// If the data does not parse as c4m, the ID is computed from raw bytes.
+    public static func identifyC4mAware(data: Data) -> C4ID {
+        if let canonical = canonicalizeC4mData(data) {
+            return identify(data: Data(canonical.utf8))
+        }
+        return identify(data: data)
+    }
+
     /// Compute the C4 ID of the file at the given URL.
+    ///
+    /// For `.c4m` files or data that looks like c4m content, the ID is
+    /// computed from the canonical form (c4m-aware identification).
+    /// For all other files, the ID is computed from raw bytes.
     public static func identify(url: URL) async throws -> C4ID {
         let data = try Data(contentsOf: url)
+        if url.pathExtension == "c4m" || looksLikeC4m(data) {
+            return identifyC4mAware(data: data)
+        }
         return identify(data: data)
+    }
+
+    // MARK: - c4m Detection
+
+    /// Heuristic: check if data looks like a c4m file by inspecting
+    /// the first non-blank line. If it starts with a mode character
+    /// (-, d, l, p, s, b, c), it might be c4m.
+    static func looksLikeC4m(_ data: Data) -> Bool {
+        let bytes = Array(data)
+        var i = 0
+        let n = bytes.count
+        // Find first non-blank line
+        while i < n {
+            // Skip whitespace
+            while i < n && (bytes[i] == 0x20 || bytes[i] == 0x09) { i += 1 }
+            // Skip empty lines
+            if i < n && bytes[i] == 0x0A { i += 1; continue }
+            break
+        }
+        if i >= n { return false }
+        let ch = bytes[i]
+        // Mode characters: - d l p s b c
+        return ch == 0x2D || ch == 0x64 || ch == 0x6C ||
+               ch == 0x70 || ch == 0x73 || ch == 0x62 || ch == 0x63
+    }
+
+    /// Try to parse data as c4m and return canonical form string.
+    /// Returns nil if parsing fails or manifest is empty.
+    private static func canonicalizeC4mData(_ data: Data) -> String? {
+        guard let manifest = try? Manifest.unmarshal(data),
+              !manifest.entries.isEmpty else {
+            return nil
+        }
+        return manifest.marshal()
     }
 
     // MARK: - Codable
