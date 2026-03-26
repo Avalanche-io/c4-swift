@@ -327,11 +327,17 @@ public struct Manifest: Sendable, Codable {
     }
 
     /// Nil-infectious: any child with null size -> parent is null.
+    /// Includes the byte length of the directory's canonical c4m content.
     private func calculateDirectorySize(_ indices: [Int]) -> Int64 {
         var total: Int64 = 0
         for idx in indices {
             if entries[idx].size < 0 { return -1 }
             total += entries[idx].size
+        }
+        // Add the byte length of the canonical c4m content for this directory
+        for idx in indices {
+            let line = entries[idx].canonical
+            total += Int64(line.utf8.count) + 1 // +1 for '\n'
         }
         return total
     }

@@ -328,7 +328,11 @@ struct ComprehensiveTests {
         m.canonicalize()
 
         let dir = m.entries.first { $0.name == "dir/" }!
-        #expect(dir.size == 300)
+        // Directory size = sum of children sizes + byte length of canonical c4m content
+        let children = m.entries.filter { $0.depth == 1 }
+        let childrenSize: Int64 = children.reduce(0) { $0 + $1.size }
+        let c4mContentSize: Int64 = children.reduce(0) { $0 + Int64($1.canonical.utf8.count) + 1 }
+        #expect(dir.size == childrenSize + c4mContentSize)
         #expect(dir.timestamp == ts2)
     }
 }
