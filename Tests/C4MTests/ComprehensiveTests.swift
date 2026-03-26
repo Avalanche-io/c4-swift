@@ -315,6 +315,19 @@ struct ComprehensiveTests {
         #expect(dir.timestamp == Entry.nullTimestamp)
     }
 
+    @Test("canonicalize: empty directory gets size 0 not null")
+    func canonicalizeEmptyDirSize() {
+        let ts = Date(timeIntervalSince1970: 1704067200)
+
+        // Empty directory scanned from disk: valid mode, valid timestamp, size unknown
+        var m = Manifest()
+        m.addEntry(Entry(mode: .dir755, timestamp: ts, size: -1, name: "empty/", depth: 0))
+        m.canonicalize()
+        let dir = m.entries.first { $0.name == "empty/" }!
+        #expect(dir.size == 0, "empty leaf directory size should be 0 after canonicalize")
+        #expect(dir.timestamp == ts, "timestamp should be preserved")
+    }
+
     @Test("canonicalize: all children have values, parent inherits sum and max time")
     func canonicalizePropagation() {
         let ts1 = Date(timeIntervalSince1970: 1704067200)

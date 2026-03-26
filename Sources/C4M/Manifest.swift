@@ -297,18 +297,26 @@ public struct Manifest: Sendable, Codable {
 
     private mutating func propagateMetadata() {
         for i in stride(from: entries.count - 1, through: 0, by: -1) {
-            if entries[i].isDir && entries[i].hasNullValues {
-                let childIndices = directChildren(of: i)
+            if !entries[i].isDir { continue }
 
-                // Propagate size (nil-infectious)
-                if entries[i].size < 0 {
-                    entries[i].size = calculateDirectorySize(childIndices)
-                }
+            let childIndices = directChildren(of: i)
 
-                // Propagate timestamp (nil-infectious)
-                if entries[i].timestamp == Entry.nullTimestamp {
-                    entries[i].timestamp = getMostRecentModtime(childIndices)
-                }
+            // Empty leaf directory: size is known to be 0.
+            if childIndices.isEmpty && entries[i].size < 0 {
+                entries[i].size = 0
+                continue
+            }
+
+            if !entries[i].hasNullValues { continue }
+
+            // Propagate size (nil-infectious)
+            if entries[i].size < 0 {
+                entries[i].size = calculateDirectorySize(childIndices)
+            }
+
+            // Propagate timestamp (nil-infectious)
+            if entries[i].timestamp == Entry.nullTimestamp {
+                entries[i].timestamp = getMostRecentModtime(childIndices)
             }
         }
     }
