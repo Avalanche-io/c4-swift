@@ -150,16 +150,31 @@ struct CrossLanguageTests {
 
     // MARK: - Tree IDs
 
-    // TODO: c4-swift does not yet have a treeId() function.
-    // When tree ID computation is added, uncomment these tests and verify
-    // that the tree IDs match the vectors (order-independent hash combination).
+    @Test("tree_ids[0]: tree of foo+bar")
+    func treeID0() throws {
+        let vectors = try Self.loadVectors()
+        let v = vectors.tree_ids[0]
+        let ids = v.inputs.map { C4ID.identify(data: Data($0.utf8)) }
+        let treeID = C4ID.treeID(from: ids)
+        #expect(treeID.string == v.tree_id)
+    }
 
-    @Test("tree_ids: skipped (no treeId function)")
-    func treeIDsSkipped() {
-        // Placeholder: verify the vectors load but skip actual tree ID computation.
-        // Tree ID tests require a function like:
-        //   C4ID.treeID(from: [C4ID]) -> C4ID
-        // which sorts the IDs, concatenates their digests, and hashes the result.
+    @Test("tree_ids[1]: tree of foo+bar+baz")
+    func treeID1() throws {
+        let vectors = try Self.loadVectors()
+        let v = vectors.tree_ids[1]
+        let ids = v.inputs.map { C4ID.identify(data: Data($0.utf8)) }
+        let treeID = C4ID.treeID(from: ids)
+        #expect(treeID.string == v.tree_id)
+    }
+
+    @Test("tree_ids[2]: tree of bar+foo (order independent)")
+    func treeID2() throws {
+        let vectors = try Self.loadVectors()
+        let v = vectors.tree_ids[2]
+        let ids = v.inputs.map { C4ID.identify(data: Data($0.utf8)) }
+        let treeID = C4ID.treeID(from: ids)
+        #expect(treeID.string == v.tree_id)
     }
 
     // MARK: - Manifest Vectors

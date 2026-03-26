@@ -230,6 +230,66 @@ public struct C4ID: Sendable, Hashable, Codable, CustomStringConvertible {
 
         return result
     }
+
+    // MARK: - Sum and Tree
+
+    /// Compute the order-independent sum of two C4 IDs.
+    ///
+    /// The two digests are sorted so the smaller comes first, concatenated
+    /// into 128 bytes, and SHA-512 hashed to produce a new C4 ID.
+    /// If the two IDs are identical, the ID is returned as-is.
+    public func sum(_ other: C4ID) -> C4ID {
+        if self == other { return self }
+        let (a, b) = digest.lexicographicallyPrecedes(other.digest)
+            ? (digest, other.digest)
+            : (other.digest, digest)
+        let hash = SHA512.hash(data: a + b)
+        return C4ID(digest: Array(hash))
+    }
+
+    /// Compute the tree ID of an array of C4 IDs.
+    ///
+    /// The algorithm sorts the IDs by raw digest bytes, deduplicates them,
+    /// then builds a binary tree bottom-up: adjacent pairs are summed
+    /// (order-independent) and an odd trailing ID carries forward.
+    /// Returns the single root ID. Returns `C4ID.void` for an empty array.
+    public static func treeID(from ids: [C4ID]) -> C4ID {
+        if ids.isEmpty { return .void }
+
+        // Sort by digest bytes
+        var sorted = ids.sorted()
+
+        // Deduplicate
+        if sorted.count > 1 {
+            var j = 1
+            for i in 1..<sorted.count {
+                if sorted[i] != sorted[j - 1] {
+                    sorted[j] = sorted[i]
+                    j += 1
+                }
+            }
+            sorted = Array(sorted.prefix(j))
+        }
+
+        if sorted.count == 1 { return sorted[0] }
+
+        // Build tree bottom-up
+        var level = sorted
+        while level.count > 1 {
+            var next: [C4ID] = []
+            var i = 0
+            while i + 1 < level.count {
+                next.append(level[i].sum(level[i + 1]))
+                i += 2
+            }
+            if i < level.count {
+                // Odd one out carries forward
+                next.append(level[i])
+            }
+            level = next
+        }
+        return level[0]
+    }
 }
 
 // MARK: - Comparable
