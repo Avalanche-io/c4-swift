@@ -76,11 +76,8 @@ public struct Decoder: Sendable {
                     }
                     section = []
 
-                    // Verify checkpoint
-                    let expected = manifest.computeC4ID()
-                    if id != expected {
-                        throw C4MError.patchIDMismatch
-                    }
+                    // The bare C4 ID is a block link (ID of previous block).
+                    // Recorded as a boundary marker but not verified — O(1).
                     patchMode = true
                 }
                 firstLine = false
