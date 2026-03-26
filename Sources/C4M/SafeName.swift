@@ -12,8 +12,6 @@ public func safeName(_ raw: String) -> String {
             needsEncoding = true
             break
         }
-        // Check for non-printable
-
         // Check for non-printable (control chars, surrogates, etc.)
         if !isPrintableScalar(scalar) {
             needsEncoding = true

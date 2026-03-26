@@ -293,7 +293,7 @@ private func mergeEqual(_ a: Entry, _ b: Entry) -> Bool {
 }
 
 /// Build full paths from flat entry list.
-func entryPaths(_ entries: [Entry]) -> [String: Entry] {
+private func entryPaths(_ entries: [Entry]) -> [String: Entry] {
     var result: [String: Entry] = [:]
     var stack: [String] = []
 
@@ -302,7 +302,7 @@ func entryPaths(_ entries: [Entry]) -> [String: Entry] {
             stack.removeLast()
         }
 
-        var fullPath = stack.joined() + e.name
+        let fullPath = stack.joined() + e.name
         result[fullPath] = e
 
         if e.isDir {

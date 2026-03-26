@@ -426,7 +426,7 @@ public struct Manifest: Sendable, Codable {
 // MARK: - Path Validation
 
 /// Returns true if name contains path semantics (traversal, separators).
-func isPathName(_ name: String) -> Bool {
+private func isPathName(_ name: String) -> Bool {
     if name.isEmpty { return true }
     let base = name.hasSuffix("/") ? String(name.dropLast()) : name
     if base.isEmpty { return true }

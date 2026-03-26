@@ -36,13 +36,13 @@ public func naturalLess(_ a: String, _ b: String) -> Bool {
 
 // MARK: - Internal
 
-struct Segment {
+private struct Segment {
     let text: String
     let isNumeric: Bool
     let numValue: Int64
 }
 
-func segmentString(_ s: String) -> [Segment] {
+private func segmentString(_ s: String) -> [Segment] {
     if s.isEmpty { return [] }
 
     var segments: [Segment] = []
