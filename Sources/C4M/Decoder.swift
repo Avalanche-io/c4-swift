@@ -58,27 +58,34 @@ public struct Decoder: Sendable {
                 }
 
                 if firstLine && section.isEmpty {
-                    // First line: external base reference
+                    // First non-blank line: external base reference. There is
+                    // no accumulated content to verify against — the consumer
+                    // must fetch the base manifest independently.
                     manifest.base = id
                 } else {
-                    // Reject empty patch sections
-                    if patchMode && section.isEmpty {
-                        throw C4MError.emptyPatch
-                    }
-
-                    // Flush current section
+                    // Bare C4 ID after entries = checkpoint: it names the
+                    // accumulated manifest state (all preceding entries and
+                    // applied patches). Flush the pending section, then verify.
+                    // Consecutive checkpoints verify the same accumulated state;
+                    // a checkpoint at EOF is the chain's closing validator
+                    // (grammar erratum 2026-07-13).
                     if !patchMode {
                         manifest.entries.append(contentsOf: section)
-                    } else {
+                    } else if !section.isEmpty {
                         var patch = Manifest()
                         patch.entries = section
                         manifest = applyPatch(base: manifest, patch: patch)
                     }
                     section = []
-
-                    // The bare C4 ID is a block link (ID of previous block).
-                    // Recorded as a boundary marker but not verified — O(1).
                     patchMode = true
+
+                    // A resolving decoder MUST verify checkpoints — except
+                    // after an unresolved external base reference, where the
+                    // accumulated state is unknowable here and verification
+                    // defers to the resolver that fetches the base.
+                    if manifest.base == nil && manifest.computeC4ID() != id {
+                        throw C4MError.patchIDMismatch
+                    }
                 }
                 firstLine = false
                 continue
@@ -95,15 +102,16 @@ public struct Decoder: Sendable {
             firstLine = false
         }
 
-        // Flush remaining section
+        // Flush remaining section. A stream may end without a closing
+        // validator (the final patch applies unverified — C4M-STANDARD
+        // §10.7); a stream whose last line was a bare C4 ID ended with its
+        // closing validator, already verified above.
         if !patchMode {
             manifest.entries.append(contentsOf: section)
         } else if !section.isEmpty {
             var patch = Manifest()
             patch.entries = section
             manifest = applyPatch(base: manifest, patch: patch)
-        } else if patchMode {
-            throw C4MError.emptyPatch
         }
 
         return manifest

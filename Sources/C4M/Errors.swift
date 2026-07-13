@@ -7,6 +7,8 @@ public enum C4MError: Error, Sendable, CustomStringConvertible {
     case pathTraversal(String)
     case notSupported(String)
     case patchIDMismatch
+    /// Retired by the 2026-07-13 chain-grammar erratum (a bare C4 ID at
+    /// EOF and consecutive checkpoints are legal); reserved for API stability.
     case emptyPatch
     case invalidFlowTarget(String)
 
