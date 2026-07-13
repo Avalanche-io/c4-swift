@@ -29,6 +29,7 @@ public struct Decoder: Sendable {
         var section: [Entry] = []
         var firstLine = true
         var patchMode = false
+        var externalBase = false
 
         while lineIndex < lines.count {
             let line = String(lines[lineIndex])
@@ -62,6 +63,7 @@ public struct Decoder: Sendable {
                     // no accumulated content to verify against — the consumer
                     // must fetch the base manifest independently.
                     manifest.base = id
+                    externalBase = true
                 } else {
                     // Bare C4 ID after entries = checkpoint: it names the
                     // accumulated manifest state (all preceding entries and
@@ -74,7 +76,9 @@ public struct Decoder: Sendable {
                     } else if !section.isEmpty {
                         var patch = Manifest()
                         patch.entries = section
+                        let base = manifest.base
                         manifest = applyPatch(base: manifest, patch: patch)
+                        manifest.base = base // applyPatch builds a fresh manifest; the reference survives
                     }
                     section = []
                     patchMode = true
@@ -82,8 +86,10 @@ public struct Decoder: Sendable {
                     // A resolving decoder MUST verify checkpoints — except
                     // after an unresolved external base reference, where the
                     // accumulated state is unknowable here and verification
-                    // defers to the resolver that fetches the base.
-                    if manifest.base == nil && manifest.computeC4ID() != id {
+                    // defers to the resolver that fetches the base. The
+                    // deferral covers EVERY checkpoint of such a stream, not
+                    // just the first (found by the libc4 conformance port).
+                    if !externalBase && manifest.computeC4ID() != id {
                         throw C4MError.patchIDMismatch
                     }
                 }
@@ -111,7 +117,9 @@ public struct Decoder: Sendable {
         } else if !section.isEmpty {
             var patch = Manifest()
             patch.entries = section
+            let base = manifest.base
             manifest = applyPatch(base: manifest, patch: patch)
+            manifest.base = base
         }
 
         return manifest

@@ -94,6 +94,32 @@ struct DecoderTests {
         #expect(m.base == id)
     }
 
+    @Test("External base reference defers verification for all checkpoints")
+    func externalBaseDefersAllCheckpoints() throws {
+        // A stream that opens with a first-line external base reference and
+        // carries TWO checkpoints (the appended-diff shape). The boundary IDs
+        // are bogus and can never match a base-less fold — but verification
+        // is deferred to the resolver that fetches the base, so decode must
+        // succeed regardless. Regression for the libc4-found deferral bug:
+        // applyPatch builds a fresh manifest that drops `base`, which
+        // previously re-enabled verification at the second checkpoint.
+        // (Mirrors Go TestDecodeExternalBaseDefersAllCheckpoints.)
+        let baseID = C4ID.identify(string: "external base manifest")
+        let bogus1 = C4ID.identify(string: "bogus checkpoint one")
+        let bogus2 = C4ID.identify(string: "bogus checkpoint two")
+        let input = """
+        \(baseID.string)
+        -rw-r--r-- 2024-01-01T00:00:00Z 100 a.txt -
+        \(bogus1.string)
+        -rw-r--r-- 2024-01-01T00:00:00Z 200 b.txt -
+        \(bogus2.string)
+        """
+
+        let m = try Manifest.unmarshal(input)
+        #expect(m.entries.count == 2)
+        #expect(m.base == baseID)
+    }
+
     @Test("Directive lines rejected")
     func directiveRejected() {
         #expect(throws: C4MError.self) {
