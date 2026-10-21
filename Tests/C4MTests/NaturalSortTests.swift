@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import C4M
 
@@ -119,5 +120,42 @@ struct NaturalSortTests {
         var input = ["file1.5.txt", "file1.10.txt", "file1.2.txt"]
         input.sort { naturalLess($0, $1) }
         #expect(input == ["file1.2.txt", "file1.5.txt", "file1.10.txt"])
+    }
+}
+
+// The conformance vectors shared with c4 (Go), c4py and c4ts: digit runs
+// of 17, 20, 21 and 39 digits. Parsing a run into an Int64 traps at 20
+// digits in Swift; the order is by integer value of any length, with no
+// parse.
+@Suite("Natural Sort Vectors")
+struct NaturalSortVectorTests {
+    static func vectors() throws -> [String] {
+        let url = Bundle.module.url(forResource: "natural_sort_vectors", withExtension: "json", subdirectory: "Vectors")!
+        let data = try Data(contentsOf: url)
+        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        return obj["sorted"] as! [String]
+    }
+
+    @Test("Every pair orders as the vectors say")
+    func pairwise() throws {
+        let v = try Self.vectors()
+        for i in v.indices {
+            #expect(!naturalLess(v[i], v[i]))
+            for j in v.indices where j > i {
+                #expect(naturalLess(v[i], v[j]), "\(v[i]) < \(v[j])")
+                #expect(!naturalLess(v[j], v[i]), "!(\(v[j]) < \(v[i]))")
+            }
+        }
+    }
+
+    @Test("Every permutation sorts to the same order")
+    func deterministic() throws {
+        let expected = try Self.vectors()
+        var rng = SystemRandomNumberGenerator()
+        for _ in 0 ..< 200 {
+            var names = expected.shuffled(using: &rng)
+            names.sort { naturalLess($0, $1) }
+            #expect(names == expected)
+        }
     }
 }

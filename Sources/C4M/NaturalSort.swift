@@ -14,11 +14,11 @@ public func naturalLess(_ a: String, _ b: String) -> Bool {
         let sb = segsB[i]
 
         if sa.isNumeric && sb.isNumeric {
-            if sa.numValue != sb.numValue {
-                return sa.numValue < sb.numValue
-            }
-            if sa.text.count != sb.text.count {
-                return sa.text.count < sb.text.count
+            // Integers of any length, with no parse: an Int64 wraps (or
+            // traps) at 20 digits, and two different runs must never tie.
+            let c = compareDigitRuns(sa.text, sb.text)
+            if c != 0 {
+                return c < 0
             }
         } else if sa.isNumeric != sb.isNumeric {
             // Text sorts before numeric (per spec)
@@ -39,7 +39,19 @@ public func naturalLess(_ a: String, _ b: String) -> Bool {
 private struct Segment {
     let text: String
     let isNumeric: Bool
-    let numValue: Int64
+}
+
+/// Orders two runs of ASCII digits by integer value of any length:
+/// leading zeros dropped, a shorter remainder is the smaller value, equal
+/// lengths compare digit by digit, and equal values put the shorter
+/// spelling first ("1" < "01"). Returns -1, 0 or 1.
+private func compareDigitRuns(_ a: String, _ b: String) -> Int {
+    let ta = a.drop(while: { $0 == "0" })
+    let tb = b.drop(while: { $0 == "0" })
+    if ta.count != tb.count { return ta.count < tb.count ? -1 : 1 }
+    if ta != tb { return ta < tb ? -1 : 1 }
+    if a.count != b.count { return a.count < b.count ? -1 : 1 }
+    return 0
 }
 
 private func segmentString(_ s: String) -> [Segment] {
@@ -59,8 +71,7 @@ private func segmentString(_ s: String) -> [Segment] {
             current.append(ch)
         } else if isDigit != isNumeric {
             // Transition
-            let numVal = isNumeric ? parseNumber(current) : 0
-            segments.append(Segment(text: current, isNumeric: isNumeric, numValue: numVal))
+            segments.append(Segment(text: current, isNumeric: isNumeric))
             current = String(ch)
             isNumeric = isDigit
         } else {
@@ -69,19 +80,8 @@ private func segmentString(_ s: String) -> [Segment] {
     }
 
     if !current.isEmpty {
-        let numVal = isNumeric ? parseNumber(current) : 0
-        segments.append(Segment(text: current, isNumeric: isNumeric, numValue: numVal))
+        segments.append(Segment(text: current, isNumeric: isNumeric))
     }
 
     return segments
-}
-
-private func parseNumber(_ s: String) -> Int64 {
-    var result: Int64 = 0
-    for ch in s {
-        if let d = ch.asciiValue, d >= 0x30 && d <= 0x39 {
-            result = result * 10 + Int64(d - 0x30)
-        }
-    }
-    return result
 }
