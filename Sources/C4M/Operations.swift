@@ -217,25 +217,53 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
 // MARK: - Patch Application
 
 /// Apply a patch to a base manifest.
-/// Patch semantics: identical entry = removal, new entry = addition, different = modification.
+/// Patch semantics: new entry = addition; different = modification; an
+/// identical restatement with no children under it = removal of the entry
+/// and everything beneath it; an identical directory restated with children
+/// under it = deepening (the directory is unchanged and the children are
+/// merged). Erratum 2026-07-31, SPECIFICATION.md "Patch Entry Semantics":
+/// a section that declares children is not removing their parent.
+/// Breadth-first discovery learns a directory's children before anything
+/// about the directory itself, so its line is necessarily restated
+/// unchanged. To remove a subtree, restate the directory alone.
 public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
     let baseMap = entryPaths(base.entries)
     var resultMap = baseMap
 
     let patchMap = entryPaths(patch.entries)
 
+    // Directories the patch lists children under. Computed up front so the
+    // outcome does not depend on dictionary iteration order.
+    var deepened = Set<String>()
+    for path in patchMap.keys {
+        var parent = path.hasSuffix("/") ? String(path.dropLast()) : path
+        while let idx = parent.lastIndex(of: "/") {
+            parent = String(parent[..<idx])
+            deepened.insert(parent + "/")
+        }
+    }
+
     for (path, patchEntry) in patchMap {
-        if let baseEntry = resultMap[path] {
-            if entriesIdentical(baseEntry, patchEntry) {
-                // Exact duplicate = removal
-                resultMap.removeValue(forKey: path)
-            } else {
-                // Modification = replace
-                resultMap[path] = patchEntry
-            }
-        } else {
+        guard let baseEntry = resultMap[path] else {
             // Addition
             resultMap[path] = patchEntry
+            continue
+        }
+        if !entriesIdentical(baseEntry, patchEntry) {
+            // Modification = replace
+            resultMap[path] = patchEntry
+            continue
+        }
+        if patchEntry.isDir && deepened.contains(path) {
+            // Deepening: the directory stays, its children are merged
+            continue
+        }
+        // Exact duplicate = removal, with everything beneath it
+        resultMap.removeValue(forKey: path)
+        if path.hasSuffix("/") {
+            for key in resultMap.keys where key.hasPrefix(path) {
+                resultMap.removeValue(forKey: key)
+            }
         }
     }
 

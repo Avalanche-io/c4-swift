@@ -121,4 +121,34 @@ struct OperationsTests {
         let result = subtract(remove, from: base)
         #expect(result.entries.count == 1)
     }
+
+    // A base tree: a.txt, docs/ holding readme.md.
+    private func makeTree() -> Manifest {
+        var m = Manifest()
+        m.addEntry(Entry(mode: .file644, size: 3, name: "a.txt"))
+        m.addEntry(Entry(mode: .dir755, size: 10, name: "docs/"))
+        m.addEntry(Entry(mode: .file644, size: 6, name: "readme.md", depth: 1))
+        return m
+    }
+
+    @Test("ApplyPatch: a directory restated identically with a child under it is deepened, not removed")
+    func applyPatchDeepensRestatedDirectory() {
+        let base = makeTree()
+        var patch = Manifest()
+        patch.addEntry(Entry(mode: .dir755, size: 10, name: "docs/"))
+        patch.addEntry(Entry(mode: .file644, size: 5, name: "guide.md", depth: 1))
+
+        let result = applyPatch(base: base, patch: patch)
+        #expect(result.entries.map { $0.name }.sorted() == ["a.txt", "docs/", "guide.md", "readme.md"])
+    }
+
+    @Test("ApplyPatch: a directory restated alone is removed together with its descendants")
+    func applyPatchRemovesDirectoryWithDescendants() {
+        let base = makeTree()
+        var patch = Manifest()
+        patch.addEntry(Entry(mode: .dir755, size: 10, name: "docs/"))
+
+        let result = applyPatch(base: base, patch: patch)
+        #expect(result.entries.map { $0.name } == ["a.txt"])
+    }
 }
