@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
+    branches: [main, 'release/**']
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
