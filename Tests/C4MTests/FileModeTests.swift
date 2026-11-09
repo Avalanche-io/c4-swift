@@ -66,11 +66,58 @@ struct FileModeTests {
         #expect(m!.isNull)
     }
 
-    @Test("Null mode from ten dashes")
-    func nullModeTenDashes() {
+    @Test("Ten dashes is the known zero mode, not null")
+    func zeroModeTenDashes() {
         let m = FileMode(string: "----------")
         #expect(m != nil)
-        #expect(m!.isNull)
+        #expect(!m!.isNull)
+        #expect(m!.isZero)
+        #expect(m == FileMode.zero)
+        #expect(m!.isRegular)
+        #expect(m!.permissions == 0)
+        #expect(m!.description == "----------")
+    }
+
+    @Test("Null and zero are distinct values with distinct spellings")
+    func nullAndZeroDistinct() {
+        #expect(FileMode.null != FileMode.zero)
+        #expect(FileMode.null.description == "-")
+        #expect(FileMode.zero.description == "----------")
+        #expect(FileMode.null.isNull && !FileMode.null.isZero)
+        #expect(FileMode.zero.isZero && !FileMode.zero.isNull)
+        #expect(!FileMode.null.isRegular)
+    }
+
+    @Test("Zero sentinel bit is outside the type mask and permission bits")
+    func zeroFlagOutsideMasks() {
+        let z = FileMode.zero
+        #expect(z.rawValue & FileMode.typeMask.rawValue == 0)
+        #expect(z.permissions == 0)
+        #expect(z.rawValue & 0o7777 == 0)
+        #expect(!z.isDir && !z.isSymlink)
+    }
+
+    @Test("known() lifts an all-zero mode to zero and leaves others alone")
+    func knownMode() {
+        #expect(FileMode.known(FileMode(rawValue: 0)) == FileMode.zero)
+        #expect(FileMode.known(.file644) == .file644)
+        #expect(FileMode.known(.zero) == .zero)
+    }
+
+    @Test("d--------- is a known directory at 0000, not null")
+    func zeroPermissionDirectory() {
+        let m = FileMode(string: "d---------")
+        #expect(m != nil)
+        #expect(m!.isDir)
+        #expect(!m!.isNull)
+        #expect(!m!.isZero)
+        #expect(m!.permissions == 0)
+        #expect(m!.description == "d---------")
+    }
+
+    @Test("Null mode formats as a single dash")
+    func nullModeFormats() {
+        #expect(FileMode(string: "-")!.description == "-")
     }
 
     @Test("Invalid mode too short")

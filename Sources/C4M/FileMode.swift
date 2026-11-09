@@ -40,10 +40,30 @@ public struct FileMode: Sendable, Hashable, Codable, CustomStringConvertible, Ra
     public static let otherWrite   = FileMode(rawValue: 0o0002)
     public static let otherExec    = FileMode(rawValue: 0o0001)
 
-    // MARK: - Common presets
+    // MARK: - Null and known zero
 
-    /// Null / unspecified mode.
+    /// Null / unspecified mode, written `-`. The raw value 0 means "not
+    /// yet checked", never "checked and found zero" (see `zero`).
     public static let null = FileMode(rawValue: 0)
+
+    /// The known-zero sentinel bit. No operating system mode sets bit 18,
+    /// and `typeMask` and `permissions` both ignore it, so a mode carrying
+    /// it behaves as mode 0 everywhere a mode is applied while remaining
+    /// distinct from `null`. Mirrors the Go library's `c4m.ZeroMode`.
+    public static let zeroFlag = FileMode(rawValue: 1 << 18)
+
+    /// The known zero mode: a regular file with no permission bits,
+    /// written `----------`. Not the null mode: null means the mode was
+    /// never observed; zero means it was observed and found to be zero.
+    public static let zero = zeroFlag
+
+    /// A mode observed on disk or parsed from a ten-character string is
+    /// known, never null: an all-zero mode becomes `zero`.
+    public static func known(_ m: FileMode) -> FileMode {
+        m.rawValue == 0 ? zero : m
+    }
+
+    // MARK: - Common presets
 
     /// `-rw-r--r--` (0644)
     public static let file644 = FileMode(rawValue: 0o0644)
@@ -61,22 +81,28 @@ public struct FileMode: Sendable, Hashable, Codable, CustomStringConvertible, Ra
 
     public var isDir: Bool { rawValue & Self.typeMask.rawValue == Self.typeDir.rawValue }
     public var isSymlink: Bool { rawValue & Self.typeMask.rawValue == Self.typeSymlink.rawValue }
-    public var isRegular: Bool { rawValue & Self.typeMask.rawValue == Self.typeRegular.rawValue && rawValue != 0 }
+    public var isRegular: Bool { rawValue & Self.typeMask.rawValue == Self.typeRegular.rawValue && !isNull }
     public var isNamedPipe: Bool { rawValue & Self.typeMask.rawValue == Self.typeNamedPipe.rawValue }
     public var isSocket: Bool { rawValue & Self.typeMask.rawValue == Self.typeSocket.rawValue }
     public var isBlock: Bool { rawValue & Self.typeMask.rawValue == Self.typeBlock.rawValue }
     public var isChar: Bool { rawValue & Self.typeMask.rawValue == Self.typeChar.rawValue }
+    /// True for the null (unspecified) mode, written `-`.
     public var isNull: Bool { rawValue == 0 }
+
+    /// True for the known zero mode, written `----------`: a regular file
+    /// with no permission bits. Distinct from `isNull`.
+    public var isZero: Bool { rawValue == Self.zero.rawValue }
 
     /// The 9-bit permission portion (rwxrwxrwx).
     public var permissions: UInt32 { rawValue & 0o0777 }
 
     // MARK: - Parsing
 
-    /// Parse a 10-character Unix mode string like "-rw-r--r--" or "drwxr-xr-x".
-    /// Accepts "-" (single dash) and "----------" as null mode.
+    /// Parse a mode string: "-" (single dash) is the null mode; any
+    /// ten-character Unix mode like "-rw-r--r--" or "drwxr-xr-x" is a known
+    /// mode, "----------" included, which is the known zero (`zero`), not null.
     public init?(string s: String) {
-        if s == "-" || s == "----------" {
+        if s == "-" {
             self.rawValue = 0
             return
         }
@@ -125,14 +151,20 @@ public struct FileMode: Sendable, Hashable, Codable, CustomStringConvertible, Ra
             }
         }
 
-        self.rawValue = mode
+        // A ten-character mode is always known; all-zero is the known zero, not null.
+        self = Self.known(FileMode(rawValue: mode))
     }
 
     // MARK: - Formatting
 
-    /// The 10-character Unix mode string (e.g. "-rw-r--r--").
+    /// The mode as written in a c4m file: "-" for the null mode, otherwise
+    /// the 10-character Unix mode string (e.g. "-rw-r--r--"; the known zero
+    /// is "----------"). Null is "-" in every form, canonical and pretty.
     public var description: String {
-        if rawValue == 0 { return "----------" }
+        if isNull { return "-" }
+
+        // The zero sentinel bit is not part of the on-disk mode.
+        let rawValue = self.rawValue & ~Self.zeroFlag.rawValue
 
         var buf: [Character] = Array(repeating: "-", count: 10)
 

@@ -59,7 +59,7 @@ struct EntryTests {
         #expect(!c.hasPrefix("----------"))
     }
 
-    @Test("Format null mode renders as ten dashes")
+    @Test("Format null mode renders as a single dash, never ten dashes")
     func formatNullMode() {
         let e = Entry(
             mode: .null,
@@ -68,8 +68,22 @@ struct EntryTests {
             name: "file.txt"
         )
         let s = e.format()
-        // Display format uses "----------" for null mode
-        #expect(s.hasPrefix("----------"))
+        // Null is "-" in every form; ten dashes is the known zero.
+        #expect(s.hasPrefix("- "))
+        #expect(!s.hasPrefix("----------"))
+    }
+
+    @Test("Known zero mode renders as ten dashes in both forms and is not a null")
+    func formatZeroMode() {
+        let e = Entry(
+            mode: .zero,
+            timestamp: Date(timeIntervalSince1970: 1704067200),
+            size: 100,
+            name: "file.txt"
+        )
+        #expect(e.canonical.hasPrefix("---------- "))
+        #expect(e.format().hasPrefix("---------- "))
+        #expect(!e.hasNullValues)
     }
 
     @Test("Format with indentation")

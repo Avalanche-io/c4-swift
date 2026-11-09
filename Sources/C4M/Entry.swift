@@ -98,7 +98,8 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// True if this entry has a flow link declaration.
     public var isFlowLinked: Bool { flowDirection != .none }
 
-    /// True if any metadata field holds a null sentinel.
+    /// True if any metadata field holds a null sentinel. The known zero
+    /// mode (`FileMode.zero`, "----------") is a value, not a null.
     public var hasNullValues: Bool {
         let nullTimestamp = timestamp == Entry.nullTimestamp
         let nullSize = size < 0
@@ -111,16 +112,12 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     // MARK: - Formatting
 
     /// Canonical form (no indentation, single spaces, no commas in sizes).
-    /// Null mode renders as "-" (single dash), C4 ID or "-" always last.
+    /// Null mode renders as "-" (single dash), the known zero as
+    /// "----------"; C4 ID or "-" always last.
     public var canonical: String {
         // Mode: null renders as single dash regardless of entry type.
         // Directory-ness comes from trailing "/" in name, not mode.
-        let modeStr: String
-        if mode.isNull {
-            modeStr = "-"
-        } else {
-            modeStr = mode.description
-        }
+        let modeStr = mode.description
 
         let timeStr = Entry.canonicalTimestamp(timestamp)
         let sizeStr = size < 0 ? "-" : "\(size)"
@@ -153,7 +150,8 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
         return parts.joined(separator: " ")
     }
 
-    /// Human-readable representation with indentation.
+    /// Human-readable representation with indentation. The mode spellings
+    /// are the canonical ones: null is "-", the known zero "----------".
     public func format(indentWidth: Int = 0, displayFormat: Bool = false) -> String {
         let indent = String(repeating: " ", count: depth * indentWidth)
 

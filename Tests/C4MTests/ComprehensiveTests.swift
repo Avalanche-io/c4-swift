@@ -315,17 +315,30 @@ struct ComprehensiveTests {
         #expect(dir.timestamp == Entry.nullTimestamp)
     }
 
-    @Test("canonicalize: empty directory gets size 0 not null")
+    @Test("canonicalize: a childless directory with an ID is empty (size 0); without one it stays null")
     func canonicalizeEmptyDirSize() {
         let ts = Date(timeIntervalSince1970: 1704067200)
+        let emptyID = C4ID(
+            "c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT")!
 
-        // Empty directory scanned from disk: valid mode, valid timestamp, size unknown
+        // Empty directory read from disk: its listing hashed to the
+        // empty-content ID, so size 0 is known.
         var m = Manifest()
-        m.addEntry(Entry(mode: .dir755, timestamp: ts, size: -1, name: "empty/", depth: 0))
+        m.addEntry(Entry(mode: .dir755, timestamp: ts, size: -1, name: "empty/", c4id: emptyID, depth: 0))
         m.canonicalize()
         let dir = m.entries.first { $0.name == "empty/" }!
-        #expect(dir.size == 0, "empty leaf directory size should be 0 after canonicalize")
+        #expect(dir.size == 0, "empty leaf directory with the empty-content ID gets size 0")
         #expect(dir.timestamp == ts, "timestamp should be preserved")
+
+        // A childless directory nobody read (no ID): nothing here knows it
+        // is empty, so its size stays null (Go c4m, 2026-11-09).
+        var u = Manifest()
+        u.addEntry(Entry(mode: FileMode(string: "d---------")!, timestamp: ts, size: -1, name: "unread/", depth: 0))
+        u.canonicalize()
+        let unread = u.entries.first { $0.name == "unread/" }!
+        #expect(unread.size == -1, "a childless directory with no ID keeps a null size")
+        #expect(unread.c4id == nil)
+        #expect(unread.timestamp == ts)
     }
 
     @Test("canonicalize: all children have values, parent inherits sum and max time")

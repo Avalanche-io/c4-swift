@@ -187,7 +187,9 @@ public struct Manifest: Sendable, Codable {
 
     /// Propagate metadata from children to parents, modifying in place.
     /// Null values stay null. No default mode/size substitution.
-    /// Nil-infectious: any null child -> parent is null.
+    /// Nil-infectious: any null child -> parent is null. A childless
+    /// directory gets size 0 only when it carries an ID; without one its
+    /// size stays null (nobody read it).
     public mutating func canonicalize() {
         propagateMetadata()
     }
@@ -301,9 +303,15 @@ public struct Manifest: Sendable, Codable {
 
             let childIndices = directChildren(of: i)
 
-            // Empty leaf directory: size is known to be 0.
+            // A directory with no listed children is empty (size 0) only
+            // when its ID says so: an empty listing hashes to the
+            // empty-content ID. A childless directory with no ID is one
+            // nobody read (a chmod 000 directory in a scan): its size stays
+            // null, because 0 beside no ID would claim a known empty.
             if childIndices.isEmpty && entries[i].size < 0 {
-                entries[i].size = 0
+                if let id = entries[i].c4id, !id.isNil {
+                    entries[i].size = 0
+                }
                 continue
             }
 

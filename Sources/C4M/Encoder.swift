@@ -90,6 +90,8 @@ public struct Encoder: Sendable {
     private func formatEntryPretty(_ entry: Entry, maxSize: Int64, c4IDColumn: Int) -> String {
         let indent = String(repeating: " ", count: entry.depth * indentWidth)
 
+        // Null is "-" in every form; "----------" is the known zero mode
+        // and must survive a round trip.
         let modeStr = entry.mode.description
 
         let timeStr: String
