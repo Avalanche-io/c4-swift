@@ -1,3 +1,5 @@
 # Byte-stable cross-implementation contract fixtures: no EOL conversion.
 Tests/C4MTests/ChainVector/* -text
 Tests/C4MTests/DeepenVector/* -text
+Tests/C4MTests/ZeroNullVector/* -text
+Tests/C4MTests/Legacy/* -text
