@@ -226,6 +226,14 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
 /// Breadth-first discovery learns a directory's children before anything
 /// about the directory itself, so its line is necessarily restated
 /// unchanged. To remove a subtree, restate the directory alone.
+///
+/// A patch is meaningful only over its own base. Because removal is spelled
+/// by exact restatement, applying a patch to any other tree reads an
+/// addition that meets an identical entry as a removal. To carry a patch's
+/// changes to another tree, read each entry against the patch's base first,
+/// then apply what it means; the rule and the shared conformance vectors
+/// are in c4 core (c4m/testdata/apply-from-vector). Not implemented here
+/// until a caller needs it.
 public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
     let baseMap = entryPaths(base.entries)
     var resultMap = baseMap

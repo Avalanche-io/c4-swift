@@ -257,7 +257,9 @@ C4m files can contain version histories as patch chains. Each patch section is s
 // Parse a c4m file with embedded patches (decoded automatically)
 let manifest = try Manifest.unmarshal(chainedC4MText)
 
-// Apply a patch to a base manifest
+// Apply a patch to a base manifest. A patch is meaningful only over its own
+// base; applying it to another tree needs the rule in c4 core's
+// c4m/testdata/apply-from-vector.
 let updated = applyPatch(base: original, patch: changes)
 ```
 
