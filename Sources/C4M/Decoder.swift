@@ -335,9 +335,16 @@ public struct Decoder: Sendable {
                     pos = ftEnd
                     while pos < n && chars[pos] == 0x20 { pos += 1 }
                 } else {
-                    // Check remaining: if it's "-" or starts with "c4" -> ungrouped hard link
+                    // Ungrouped hard link: the C4 ID field (or its null) is the
+                    // only field after the operator. The C4 ID is always the
+                    // last field and a target never holds an unescaped space,
+                    // so a second field means the first is a target, even when
+                    // it starts with "c4" (a null mode, as views carry links,
+                    // is not a symlink mode). Taking any "c4" token here read a
+                    // link to a C4 ID's text as a hard link and dropped its
+                    // target (shared link-target vector, 2026-11-10).
                     let remaining = String(line[line.index(line.startIndex, offsetBy: pos)...]).trimmingCharacters(in: .whitespaces)
-                    if remaining == "-" || remaining.hasPrefix("c4") {
+                    if Decoder.isLoneIDField(remaining) {
                         hardLink = -1
                     } else if pos < n {
                         // Fallback: treat as symlink target
@@ -522,6 +529,21 @@ public struct Decoder: Sendable {
         }
 
         return (String(line[line.index(line.startIndex, offsetBy: start)...]), pos)
+    }
+
+    /// Whether `s`, the rest of a line after a link operator, is exactly one
+    /// field that is a C4 ID or the null "-". A field ends at an unescaped space.
+    static func isLoneIDField(_ s: String) -> Bool {
+        if s == "-" { return true }
+        guard s.hasPrefix("c4") else { return false }
+        let bytes = Array(s.utf8)
+        var i = 0
+        while i < bytes.count {
+            if bytes[i] == 0x5C { i += 2; continue } // backslash escape
+            if bytes[i] == 0x20 { return false }
+            i += 1
+        }
+        return C4ID(s) != nil
     }
 
     /// Check if text at position matches flow target pattern: [a-zA-Z][a-zA-Z0-9_-]*:
