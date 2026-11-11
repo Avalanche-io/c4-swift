@@ -44,13 +44,13 @@ public struct Manifest: Sendable, Codable {
     /// Look up an entry by full path (O(1) after index build).
     public func getEntry(path: String) -> Entry? {
         let idx = ensureIndex()
-        return idx.byPath[path]
+        return idx.byPath[ByteKey(path)]
     }
 
     /// Look up an entry by bare name.
     public func getByName(_ name: String) -> Entry? {
         let idx = ensureIndex()
-        return idx.byName[name]
+        return idx.byName[ByteKey(name)]
     }
 
     /// Return the full path of an entry.
@@ -199,7 +199,7 @@ public struct Manifest: Sendable, Codable {
     public func validate() throws {
         if version.isEmpty { throw C4MError.invalidEntry(0, "missing version") }
 
-        var seen = Set<String>()
+        var seen = Set<ByteKey>()
         var dirStack: [String] = []
 
         for e in entries {
@@ -218,8 +218,8 @@ public struct Manifest: Sendable, Codable {
             } else {
                 fullPath = e.name
             }
-            if seen.contains(fullPath) { throw C4MError.duplicatePath(fullPath) }
-            seen.insert(fullPath)
+            if seen.contains(ByteKey(fullPath)) { throw C4MError.duplicatePath(fullPath) }
+            seen.insert(ByteKey(fullPath))
 
             if e.isDir {
                 while dirStack.count <= e.depth {
@@ -255,15 +255,17 @@ public struct Manifest: Sendable, Codable {
                 children.append((entries[i], i))
             }
 
-            // Dedup by name, keeping last occurrence
-            var seenNames: [String: Int] = [:]
+            // Dedup by name, keeping last occurrence. A name is its bytes:
+            // keyed by String, the NFC and NFD spellings of one name were
+            // taken for one and the earlier was dropped (unicode-name vector).
+            var seenNames: [ByteKey: Int] = [:]
             var deduped: [(entry: Entry, index: Int)] = []
             for child in children {
-                if let idx = seenNames[child.entry.name] {
+                if let idx = seenNames[ByteKey(child.entry.name)] {
                     used[deduped[idx].index] = true
                     deduped[idx] = child
                 } else {
-                    seenNames[child.entry.name] = deduped.count
+                    seenNames[ByteKey(child.entry.name)] = deduped.count
                     deduped.append(child)
                 }
             }
@@ -368,10 +370,10 @@ public struct Manifest: Sendable, Codable {
 
     /// Key type for entries in the index (using array position).
     private struct TreeIndex {
-        var byPath: [String: Entry]
-        var byName: [String: Entry]
-        var pathOf: [String: String]       // indexKey -> fullPath
-        var entryIndex: [String: Int]      // indexKey -> entries array index
+        var byPath: [ByteKey: Entry]
+        var byName: [ByteKey: Entry]
+        var pathOf: [ByteKey: String]      // indexKey -> fullPath
+        var entryIndex: [ByteKey: Int]     // indexKey -> entries array index
         var children: [Int: [Int]]         // parent index -> child indices
         var parent: [Int: Int]             // child index -> parent index
     }
@@ -392,7 +394,7 @@ public struct Manifest: Sendable, Codable {
         for (i, e) in entries.enumerated() {
             idx.entryIndex[e.indexKeyAt(i)] = i
             idx.entryIndex[e.indexKey] = i
-            idx.byName[e.name] = e
+            idx.byName[ByteKey(e.name)] = e
         }
 
         // Build parent-child relationships
@@ -419,7 +421,7 @@ public struct Manifest: Sendable, Codable {
                 current = pIdx
             }
             let fullPath = parts.joined()
-            idx.byPath[fullPath] = e
+            idx.byPath[ByteKey(fullPath)] = e
             idx.pathOf[e.indexKeyAt(i)] = fullPath
         }
 
@@ -447,12 +449,12 @@ private func isPathName(_ name: String) -> Bool {
 
 extension Entry {
     /// A stable key for value-type entries in the tree index.
-    var indexKey: String {
-        "\(depth):\(name):\(mode.rawValue):\(size)"
+    var indexKey: ByteKey {
+        ByteKey("\(depth):\(name):\(mode.rawValue):\(size)")
     }
 
     /// A key incorporating the array position for guaranteed uniqueness.
-    func indexKeyAt(_ index: Int) -> String {
-        "\(index):\(depth):\(name)"
+    func indexKeyAt(_ index: Int) -> ByteKey {
+        ByteKey("\(index):\(depth):\(name)")
     }
 }

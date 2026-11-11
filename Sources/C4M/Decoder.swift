@@ -276,7 +276,7 @@ public struct Decoder: Sendable {
             guard pos > sizeStart else {
                 throw C4MError.invalidEntry(lineNum, "invalid size")
             }
-            let sizeStr = String(line[line.index(line.startIndex, offsetBy: sizeStart) ..< line.index(line.startIndex, offsetBy: pos)])
+            let sizeStr = Decoder.utf8Slice(chars, sizeStart, pos)
                 .replacingOccurrences(of: ",", with: "")
             guard let s = Int64(sizeStr) else {
                 throw C4MError.invalidEntry(lineNum, "invalid size '\(sizeStr)'")
@@ -299,7 +299,7 @@ public struct Decoder: Sendable {
         let (rawName, nameEnd) = parseName(line, from: pos)
         let name = rawName
         pos = nameEnd
-        let rawNameText = String(line[line.index(line.startIndex, offsetBy: nameStart) ..< line.index(line.startIndex, offsetBy: pos)])
+        let rawNameText = Decoder.utf8Slice(chars, nameStart, pos)
 
         // Skip whitespace
         while pos < n && chars[pos] == 0x20 { pos += 1 }
@@ -330,7 +330,7 @@ public struct Decoder: Sendable {
                 while pos < n && chars[pos] >= 0x30 && chars[pos] <= 0x39 {
                     pos += 1
                 }
-                let groupStr = String(line[line.index(line.startIndex, offsetBy: groupStart) ..< line.index(line.startIndex, offsetBy: pos)])
+                let groupStr = Decoder.utf8Slice(chars, groupStart, pos)
                 hardLink = Int(groupStr) ?? 0
                 while pos < n && chars[pos] == 0x20 { pos += 1 }
             } else {
@@ -354,7 +354,7 @@ public struct Decoder: Sendable {
                     // is not a symlink mode). Taking any "c4" token here read a
                     // link to a C4 ID's text as a hard link and dropped its
                     // target (shared link-target vector, 2026-11-10).
-                    let remaining = String(line[line.index(line.startIndex, offsetBy: pos)...]).trimmingCharacters(in: .whitespaces)
+                    let remaining = Decoder.utf8Slice(chars, pos, chars.count).trimmingCharacters(in: .whitespaces)
                     if Decoder.isLoneIDField(remaining) {
                         hardLink = -1
                     } else if pos < n {
@@ -391,7 +391,7 @@ public struct Decoder: Sendable {
         // error: a read error must never become a value, null included.
         var c4id: C4ID? = nil
         if pos < n {
-            let remaining = String(line[line.index(line.startIndex, offsetBy: pos)...]).trimmingCharacters(in: .whitespaces)
+            let remaining = Decoder.utf8Slice(chars, pos, chars.count).trimmingCharacters(in: .whitespaces)
             if remaining.isEmpty || remaining == "-" {
                 c4id = nil
             } else if let parsed = C4ID(remaining) {
@@ -425,7 +425,7 @@ public struct Decoder: Sendable {
         let chars = Array(line.utf8)
         let n = chars.count
         var pos = from
-        var buf = ""
+        var buf: [UInt8] = []
 
         while pos < n {
             let ch = chars[pos]
@@ -439,10 +439,10 @@ public struct Decoder: Sendable {
             if ch == 0x5C && pos + 1 < n {
                 let next = chars[pos + 1]
                 if next == 0x20 || next == 0x22 || next == 0x5B || next == 0x5D {
-                    buf.append(Character(UnicodeScalar(next)))
+                    buf.append(next)
                 } else {
-                    buf.append(Character(UnicodeScalar(ch)))
-                    buf.append(Character(UnicodeScalar(next)))
+                    buf.append(ch)
+                    buf.append(next)
                 }
                 pos += 2
                 continue
@@ -450,23 +450,23 @@ public struct Decoder: Sendable {
 
             // Directory name ends at / (inclusive)
             if ch == 0x2F { // '/'
-                buf.append("/")
+                buf.append(0x2F)
                 pos += 1
-                return (buf, pos)
+                return (String(decoding: buf, as: UTF8.self), pos)
             }
 
             // Boundary: space(s) followed by a link operator, the c4
             // prefix, or a null "-". Aligned (pretty) forms pad fields with
             // runs of spaces, so the lookahead skips the whole run first.
             if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: true) {
-                return (buf, pos)
+                return (String(decoding: buf, as: UTF8.self), pos)
             }
 
-            buf.append(Character(UnicodeScalar(ch)))
+            buf.append(ch)
             pos += 1
         }
 
-        return (buf, pos)
+        return (String(decoding: buf, as: UTF8.self), pos)
     }
 
     /// True if the run of spaces starting at `pos` ends the current field:
@@ -505,7 +505,7 @@ public struct Decoder: Sendable {
         let chars = Array(line.utf8)
         let n = chars.count
         var pos = from
-        var buf = ""
+        var buf: [UInt8] = []
 
         while pos < n {
             let ch = chars[pos]
@@ -515,10 +515,10 @@ public struct Decoder: Sendable {
             if ch == 0x5C && pos + 1 < n {
                 let next = chars[pos + 1]
                 if next == 0x20 || next == 0x22 {
-                    buf.append(Character(UnicodeScalar(next)))
+                    buf.append(next)
                 } else {
-                    buf.append(Character(UnicodeScalar(ch)))
-                    buf.append(Character(UnicodeScalar(next)))
+                    buf.append(ch)
+                    buf.append(next)
                 }
                 pos += 2
                 continue
@@ -528,14 +528,24 @@ public struct Decoder: Sendable {
             // next character let that padding join the target (link-target
             // vector).
             if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: false) {
-                return (buf, pos)
+                return (String(decoding: buf, as: UTF8.self), pos)
             }
 
-            buf.append(Character(UnicodeScalar(ch)))
+            buf.append(ch)
             pos += 1
         }
 
-        return (buf, pos)
+        return (String(decoding: buf, as: UTF8.self), pos)
+    }
+
+    /// The text of bytes chars[a..<b], decoded as UTF-8. Every field
+    /// parser walks Array(line.utf8), so its positions are byte offsets;
+    /// slicing the String by Character offsets instead skipped one
+    /// position for each extra byte of a non-ASCII name, so any line whose
+    /// name was not ASCII lost the start of its C4 ID and was refused
+    /// (unicode-name vector, 2026-11-11).
+    static func utf8Slice(_ chars: [UInt8], _ a: Int, _ b: Int) -> String {
+        String(decoding: chars[a..<b], as: UTF8.self)
     }
 
     /// Parse a flow target (location:path) starting at pos.
@@ -548,12 +558,12 @@ public struct Decoder: Sendable {
         while pos < n {
             let ch = chars[pos]
             if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: false) {
-                return (String(line[line.index(line.startIndex, offsetBy: start) ..< line.index(line.startIndex, offsetBy: pos)]), pos)
+                return (Decoder.utf8Slice(chars, start, pos), pos)
             }
             pos += 1
         }
 
-        return (String(line[line.index(line.startIndex, offsetBy: start)...]), pos)
+        return (Decoder.utf8Slice(chars, start, chars.count), pos)
     }
 
     /// Whether `s`, the rest of a line after a link operator, is exactly one

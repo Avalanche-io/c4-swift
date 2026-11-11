@@ -26,8 +26,13 @@ public func diff(lhs: Manifest, rhs: Manifest) -> DiffResult {
         same: Manifest()
     )
 
-    let aMap = Dictionary(lhs.entries.map { ($0.name, $0) }, uniquingKeysWith: { _, b in b })
-    let bMap = Dictionary(rhs.entries.map { ($0.name, $0) }, uniquingKeysWith: { _, b in b })
+    // Keyed by full path, as bytes: never by bare name (same-named entries
+    // in different folders are different entries) and never by String
+    // (whose equality makes the NFC and NFD spellings one name). Through
+    // 1.0.25 this keyed by bare name, so a change to a/x.txt beside b/x.txt
+    // was reported as "x.txt same".
+    let aMap = entryPaths(lhs.entries)
+    let bMap = entryPaths(rhs.entries)
 
     for (name, entryA) in aMap {
         if let entryB = bMap[name] {
@@ -56,48 +61,52 @@ public func diff(lhs: Manifest, rhs: Manifest) -> DiffResult {
 }
 
 /// Combine multiple manifests, keeping the latest version of each path.
+/// Paths are full paths compared as bytes, as in diff.
 public func union(_ manifests: Manifest...) -> Manifest {
-    var seen: [String: Entry] = [:]
+    var seen: [ByteKey: Entry] = [:]
     for m in manifests {
-        for entry in m.entries {
-            seen[entry.name] = entry
+        for (path, entry) in entryPaths(m.entries) {
+            seen[path] = entry
         }
     }
-    var result = Manifest()
-    for entry in seen.values {
-        result.addEntry(entry)
-    }
-    result.sortEntries()
-    return result
+    return manifestFromPaths(seen)
 }
 
 /// Return only entries whose paths exist in all manifests.
+/// Paths are full paths compared as bytes, as in diff.
 public func intersect(_ manifests: Manifest...) -> Manifest {
     guard let first = manifests.first else { return Manifest() }
 
-    var common: [String: Entry] = Dictionary(first.entries.map { ($0.name, $0) }, uniquingKeysWith: { _, b in b })
-
+    var common = entryPaths(first.entries)
     for m in manifests.dropFirst() {
-        let current = Set(m.entries.map(\.name))
-        for key in common.keys where !current.contains(key) {
+        let current = entryPaths(m.entries)
+        for key in common.keys where current[key] == nil {
             common.removeValue(forKey: key)
         }
     }
-
-    var result = Manifest()
-    for entry in common.values { result.addEntry(entry) }
-    result.sortEntries()
-    return result
+    return manifestFromPaths(common)
 }
 
 /// Remove entries in `remove` from `from`.
+/// Paths are full paths compared as bytes, as in diff.
 public func subtract(_ remove: Manifest, from base: Manifest) -> Manifest {
-    let removeSet = Set(remove.entries.map(\.name))
+    let removePaths = entryPaths(remove.entries)
+    var kept = entryPaths(base.entries)
+    for key in removePaths.keys {
+        kept.removeValue(forKey: key)
+    }
+    return manifestFromPaths(kept)
+}
+
+/// A manifest of the entries at these full paths, each named and placed by
+/// its path.
+private func manifestFromPaths(_ paths: [ByteKey: Entry]) -> Manifest {
     var result = Manifest()
-    for entry in base.entries {
-        if !removeSet.contains(entry.name) {
-            result.addEntry(entry)
-        }
+    for p in paths.keys.sorted() {
+        var entry = paths[p]!
+        entry.name = pathEntryName(p.string)
+        entry.depth = pathToDepth(p.string)
+        result.addEntry(entry)
     }
     result.sortEntries()
     return result
@@ -133,12 +142,12 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
     let remoteMap = entryPaths(remote.entries)
 
     // Collect all unique paths
-    var allPaths = Set<String>()
+    var allPaths = Set<ByteKey>()
     for p in baseMap.keys { allPaths.insert(p) }
     for p in localMap.keys { allPaths.insert(p) }
     for p in remoteMap.keys { allPaths.insert(p) }
 
-    var merged: [String: Entry] = [:]
+    var merged: [ByteKey: Entry] = [:]
     var conflicts: [MergeConflict] = []
 
     for p in allPaths.sorted() {
@@ -154,7 +163,7 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
             if mergeEqual(l!, r!) {
                 merged[p] = l!
             } else {
-                conflicts.append(MergeConflict(path: p, baseEntry: nil, localEntry: l, remoteEntry: r))
+                conflicts.append(MergeConflict(path: p.string, baseEntry: nil, localEntry: l, remoteEntry: r))
                 // Keep newer
                 if r!.timestamp > l!.timestamp {
                     merged[p] = r!
@@ -175,7 +184,7 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
                 if mergeEqual(l!, r!) {
                     merged[p] = l!
                 } else {
-                    conflicts.append(MergeConflict(path: p, baseEntry: b, localEntry: l, remoteEntry: r))
+                    conflicts.append(MergeConflict(path: p.string, baseEntry: b, localEntry: l, remoteEntry: r))
                     if r!.timestamp > l!.timestamp {
                         merged[p] = r!
                     } else {
@@ -187,14 +196,14 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
             if mergeEqual(b!, l!) {
                 // Unchanged locally, remote deleted -> delete
             } else {
-                conflicts.append(MergeConflict(path: p, baseEntry: b, localEntry: l, remoteEntry: nil))
+                conflicts.append(MergeConflict(path: p.string, baseEntry: b, localEntry: l, remoteEntry: nil))
                 merged[p] = l!
             }
         } else if b != nil && l == nil && r != nil {
             if mergeEqual(b!, r!) {
                 // Unchanged remotely, local deleted -> delete
             } else {
-                conflicts.append(MergeConflict(path: p, baseEntry: b, localEntry: nil, remoteEntry: r))
+                conflicts.append(MergeConflict(path: p.string, baseEntry: b, localEntry: nil, remoteEntry: r))
                 merged[p] = r!
             }
         }
@@ -202,16 +211,7 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
     }
 
     // Rebuild manifest from paths
-    var result = Manifest()
-    for p in merged.keys.sorted() {
-        var entry = merged[p]!
-        entry.name = pathEntryName(p)
-        entry.depth = pathToDepth(p)
-        result.addEntry(entry)
-    }
-    result.sortEntries()
-
-    return MergeResult(merged: result, conflicts: conflicts)
+    return MergeResult(merged: manifestFromPaths(merged), conflicts: conflicts)
 }
 
 // MARK: - Patch Application
@@ -234,12 +234,12 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
 
     // Directories the patch lists children under. Computed up front so the
     // outcome does not depend on dictionary iteration order.
-    var deepened = Set<String>()
+    var deepened = Set<ByteKey>()
     for path in patchMap.keys {
-        var parent = path.hasSuffix("/") ? String(path.dropLast()) : path
-        while let idx = parent.lastIndex(of: "/") {
-            parent = String(parent[..<idx])
-            deepened.insert(parent + "/")
+        var parent = path.isDirPath ? Array(path.bytes.dropLast()) : path.bytes
+        while let idx = parent.lastIndex(of: 0x2F) {
+            parent = Array(parent[..<idx])
+            deepened.insert(ByteKey(bytes: parent + [0x2F]))
         }
     }
 
@@ -260,7 +260,7 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
         }
         // Exact duplicate = removal, with everything beneath it
         resultMap.removeValue(forKey: path)
-        if path.hasSuffix("/") {
+        if path.isDirPath {
             for key in resultMap.keys where key.hasPrefix(path) {
                 resultMap.removeValue(forKey: key)
             }
@@ -274,8 +274,8 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
 
     for p in resultMap.keys.sorted() {
         var entry = resultMap[p]!
-        entry.name = pathEntryName(p)
-        entry.depth = pathToDepth(p)
+        entry.name = pathEntryName(p.string)
+        entry.depth = pathToDepth(p.string)
         result.addEntry(entry)
     }
     result.sortEntries()
@@ -285,7 +285,7 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
 // MARK: - Internal Helpers
 
 private func entriesEqual(_ a: Entry, _ b: Entry) -> Bool {
-    guard a.name == b.name else { return false }
+    guard sameBytes(a.name, b.name) else { return false }
 
     if let aID = a.c4id, let bID = b.c4id, !aID.isNil && !bID.isNil {
         return aID == bID && a.mode == b.mode
@@ -294,35 +294,35 @@ private func entriesEqual(_ a: Entry, _ b: Entry) -> Bool {
     return a.mode == b.mode &&
            a.size == b.size &&
            a.timestamp == b.timestamp &&
-           a.target == b.target
+           sameBytes(a.target, b.target)
 }
 
 private func entriesIdentical(_ a: Entry, _ b: Entry) -> Bool {
-    a.name == b.name &&
+    sameBytes(a.name, b.name) &&
     a.mode == b.mode &&
     a.size == b.size &&
     a.timestamp == b.timestamp &&
-    a.target == b.target &&
+    sameBytes(a.target, b.target) &&
     a.c4id == b.c4id &&
     a.hardLink == b.hardLink &&
     a.flowDirection == b.flowDirection &&
-    a.flowTarget == b.flowTarget
+    sameBytes(a.flowTarget, b.flowTarget)
 }
 
 private func mergeEqual(_ a: Entry, _ b: Entry) -> Bool {
     if a.isDir != b.isDir { return false }
     if a.isDir {
-        return a.flowDirection == b.flowDirection && a.flowTarget == b.flowTarget
+        return a.flowDirection == b.flowDirection && sameBytes(a.flowTarget, b.flowTarget)
     }
     if a.isSymlink || b.isSymlink {
-        return a.isSymlink == b.isSymlink && a.target == b.target
+        return a.isSymlink == b.isSymlink && sameBytes(a.target, b.target)
     }
     return a.c4id == b.c4id
 }
 
 /// Build full paths from flat entry list.
-private func entryPaths(_ entries: [Entry]) -> [String: Entry] {
-    var result: [String: Entry] = [:]
+private func entryPaths(_ entries: [Entry]) -> [ByteKey: Entry] {
+    var result: [ByteKey: Entry] = [:]
     var stack: [String] = []
 
     for e in entries {
@@ -331,7 +331,7 @@ private func entryPaths(_ entries: [Entry]) -> [String: Entry] {
         }
 
         let fullPath = stack.joined() + e.name
-        result[fullPath] = e
+        result[ByteKey(fullPath)] = e
 
         if e.isDir {
             stack.append(e.name)
