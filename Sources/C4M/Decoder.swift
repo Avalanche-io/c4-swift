@@ -175,7 +175,12 @@ public struct Decoder: Sendable {
             throw C4MError.invalidEntry(lineNum, "line too short")
         }
 
-        let mode = FileMode(string: modeStr)
+        // "-" (and, on this line, ten dashes) is null. A mode that does not
+        // parse is an error naming the line, never a null: a damaged mode
+        // used to read as unknown (damaged-line vector).
+        guard let mode = FileMode(string: modeStr) else {
+            throw C4MError.invalidEntry(lineNum, "invalid mode '\(modeStr)'")
+        }
 
         // Parse timestamp
         var timestamp: Date
@@ -212,10 +217,10 @@ public struct Decoder: Sendable {
         }
 
         // Parse remaining: size name [link-operator target] [c4id]
-        let parsed = try parseEntryFields(rest, lineNum: lineNum, mode: mode ?? .null)
+        let parsed = try parseEntryFields(rest, lineNum: lineNum, mode: mode)
 
         var entry = Entry(
-            mode: mode ?? .null,
+            mode: mode,
             timestamp: timestamp,
             size: parsed.size,
             name: parsed.name,
@@ -450,31 +455,11 @@ public struct Decoder: Sendable {
                 return (buf, pos)
             }
 
-            // Boundary: space followed by link operator, c4 prefix, or -
-            if ch == 0x20 {
-                let rest = n - pos
-                // " -> " or " ->N"
-                if rest >= 4 && chars[pos + 1] == 0x2D && chars[pos + 2] == 0x3E && chars[pos + 3] == 0x20 {
-                    return (buf, pos)
-                }
-                if rest >= 4 && chars[pos + 1] == 0x2D && chars[pos + 2] == 0x3E && chars[pos + 3] >= 0x31 && chars[pos + 3] <= 0x39 {
-                    return (buf, pos)
-                }
-                // " <- " or " <> "
-                if rest >= 4 && chars[pos + 1] == 0x3C && chars[pos + 2] == 0x2D && chars[pos + 3] == 0x20 {
-                    return (buf, pos)
-                }
-                if rest >= 4 && chars[pos + 1] == 0x3C && chars[pos + 2] == 0x3E && chars[pos + 3] == 0x20 {
-                    return (buf, pos)
-                }
-                // " c4"
-                if rest > 2 && chars[pos + 1] == 0x63 && chars[pos + 2] == 0x34 {
-                    return (buf, pos)
-                }
-                // " -" at end or " - "
-                if rest >= 2 && chars[pos + 1] == 0x2D && (rest == 2 || chars[pos + 2] == 0x20) {
-                    return (buf, pos)
-                }
+            // Boundary: space(s) followed by a link operator, the c4
+            // prefix, or a null "-". Aligned (pretty) forms pad fields with
+            // runs of spaces, so the lookahead skips the whole run first.
+            if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: true) {
+                return (buf, pos)
             }
 
             buf.append(Character(UnicodeScalar(ch)))
@@ -482,6 +467,35 @@ public struct Decoder: Sendable {
         }
 
         return (buf, pos)
+    }
+
+    /// True if the run of spaces starting at `pos` ends the current field:
+    /// what follows the run is end of line, a link operator (`-> `, `<- `,
+    /// `<> `, `->N`; names only), a C4 ID (`c4`), or a lone `-`.
+    static func isFieldBoundary(_ chars: [UInt8], at pos: Int, allowLinkOperators: Bool) -> Bool {
+        let n = chars.count
+        var j = pos
+        while j < n && chars[j] == 0x20 { j += 1 }
+        let rest = n - j
+        // Trailing padding: the field ended at the first space.
+        if rest == 0 { return true }
+        if allowLinkOperators {
+            // "-> ", "<- ", "<> "
+            if rest >= 3 && chars[j + 2] == 0x20 {
+                if chars[j] == 0x2D && chars[j + 1] == 0x3E { return true }
+                if chars[j] == 0x3C && chars[j + 1] == 0x2D { return true }
+                if chars[j] == 0x3C && chars[j + 1] == 0x3E { return true }
+            }
+            // Hard link group marker "->N", N in 1-9
+            if rest >= 3 && chars[j] == 0x2D && chars[j + 1] == 0x3E && chars[j + 2] >= 0x31 && chars[j + 2] <= 0x39 {
+                return true
+            }
+        }
+        // "c4"
+        if rest >= 2 && chars[j] == 0x63 && chars[j + 1] == 0x34 { return true }
+        // "-" at end or "- "
+        if chars[j] == 0x2D && (rest == 1 || chars[j + 1] == 0x20) { return true }
+        return false
     }
 
     /// Parse a symlink target starting at `from`.
@@ -510,16 +524,11 @@ public struct Decoder: Sendable {
                 continue
             }
 
-            if ch == 0x20 {
-                let rest = n - pos
-                // " c4"
-                if rest > 2 && chars[pos + 1] == 0x63 && chars[pos + 2] == 0x34 {
-                    return (buf, pos)
-                }
-                // " -" at end or " - "
-                if rest >= 2 && chars[pos + 1] == 0x2D && (rest == 2 || chars[pos + 2] == 0x20) {
-                    return (buf, pos)
-                }
+            // The pretty form pads before the C4 ID field; testing only the
+            // next character let that padding join the target (link-target
+            // vector).
+            if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: false) {
+                return (buf, pos)
             }
 
             buf.append(Character(UnicodeScalar(ch)))
@@ -538,14 +547,8 @@ public struct Decoder: Sendable {
 
         while pos < n {
             let ch = chars[pos]
-            if ch == 0x20 {
-                let rest = n - pos
-                if rest > 2 && chars[pos + 1] == 0x63 && chars[pos + 2] == 0x34 {
-                    return (String(line[line.index(line.startIndex, offsetBy: start) ..< line.index(line.startIndex, offsetBy: pos)]), pos)
-                }
-                if rest >= 2 && chars[pos + 1] == 0x2D && (rest == 2 || chars[pos + 2] == 0x20) {
-                    return (String(line[line.index(line.startIndex, offsetBy: start) ..< line.index(line.startIndex, offsetBy: pos)]), pos)
-                }
+            if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: false) {
+                return (String(line[line.index(line.startIndex, offsetBy: start) ..< line.index(line.startIndex, offsetBy: pos)]), pos)
             }
             pos += 1
         }
