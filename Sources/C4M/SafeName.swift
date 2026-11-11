@@ -82,7 +82,17 @@ public func safeName(_ raw: String) -> String {
 
 /// Reverse SafeName: decode Tier 2 backslash escapes and Tier 3 braille
 /// patterns back to raw bytes.
+///
+/// A Swift String cannot hold bytes that are not UTF-8, which Tier 3 can
+/// carry. For such a name this returns `encoded` itself, a different name;
+/// the decoder uses `unsafeNameExact` and refuses the line instead.
 public func unsafeName(_ encoded: String) -> String {
+    unsafeNameExact(encoded) ?? encoded
+}
+
+/// Reverse SafeName exactly: the decoded name, or nil when its bytes are not
+/// UTF-8 and so cannot be held in a String (SafeName vector).
+func unsafeNameExact(_ encoded: String) -> String? {
     if !encoded.contains("\u{00A4}") && !encoded.contains("\\") {
         return encoded
     }
@@ -158,7 +168,7 @@ public func unsafeName(_ encoded: String) -> String {
         i += 1
     }
 
-    return String(bytes: result, encoding: .utf8) ?? encoded
+    return String(bytes: result, encoding: .utf8)
 }
 
 // MARK: - Internal Helpers

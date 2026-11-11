@@ -401,8 +401,14 @@ public struct Decoder: Sendable {
             }
         }
 
-        // Unescape SafeName from the parsed name
-        let unescapedName = unsafeName(name)
+        // Unescape SafeName from the parsed name. A name whose bytes are not
+        // UTF-8 cannot be held exactly in a String: through 1.0.26 it read as
+        // its escaped text, a different name and C4 ID, with no error. It is
+        // refused, naming the line, until it is decided whether c4m-swift
+        // carries names as bytes (with Joshua; SafeName vector).
+        guard let unescapedName = unsafeNameExact(name) else {
+            throw C4MError.invalidEntry(lineNum, "name '\(name)' decodes to bytes that are not UTF-8, which a Swift String cannot hold exactly")
+        }
         // A name is a bare entry name, checked once decoded, so an escaped
         // "/" is refused as surely as a raw one (name-rule vector).
         if isPathName(unescapedName) {
@@ -413,7 +419,9 @@ public struct Decoder: Sendable {
             size: size,
             name: unescapedName,
             rawName: rawNameText,
-            target: unsafeName(target),
+            target: try unsafeNameExact(target) ?? {
+                throw C4MError.invalidEntry(lineNum, "target '\(target)' decodes to bytes that are not UTF-8, which a Swift String cannot hold exactly")
+            }(),
             c4id: c4id,
             hardLink: hardLink,
             flowDirection: flowDirection,
