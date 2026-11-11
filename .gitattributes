@@ -3,3 +3,4 @@ Tests/C4MTests/ChainVector/* -text
 Tests/C4MTests/DeepenVector/* -text
 Tests/C4MTests/ZeroNullVector/* -text
 Tests/C4MTests/Legacy/* -text
+Tests/C4MTests/LinkTargetVector/* -text
