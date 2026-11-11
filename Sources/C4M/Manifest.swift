@@ -204,8 +204,8 @@ public struct Manifest: Sendable, Codable {
     /// Propagate metadata from children to parents, modifying in place.
     /// Null values stay null. No default mode/size substitution.
     /// Nil-infectious: any null child -> parent is null. A childless
-    /// directory with a C4 ID other than the empty listing's (collapsed)
-    /// keeps a null size; any other childless directory gets 0.
+    /// directory gets size 0 only when its ID is the empty listing's; with
+    /// any other ID (collapsed) or none (unread) its size stays null.
     public mutating func canonicalize() {
         propagateMetadata()
     }
@@ -321,17 +321,18 @@ public struct Manifest: Sendable, Codable {
 
             let childIndices = directChildren(of: i)
 
-            // A childless directory with a C4 ID other than the empty
-            // listing's is collapsed: its listing lives under that ID, not
-            // here, so its size cannot be derived and stays null. Through
-            // 1.0.26 any childless directory gave 0, an invented value
-            // computeC4ID then hashed (childless-dir vector). On this line a
-            // childless directory with no ID still gives 0, as the Go
-            // reference's 1.0.x line does; main keeps that size null, a known
-            // 1.0.x difference the vector's unread/ pins.
+            // A directory with no listed children is empty (size 0) only
+            // when its ID says so: an empty listing hashes to the
+            // empty-content ID. A childless directory with no ID is one
+            // nobody read (a hand-written line, or another tool's output):
+            // its size stays null, because 0 beside no ID would claim a
+            // known empty. A childless directory with any other ID is
+            // collapsed: its listing lives under that ID, not here, so its
+            // size cannot be derived and stays null. Through 1.0.26 every
+            // childless directory gave 0, an invented value computeC4ID then
+            // hashed (childless-dir vector).
             if childIndices.isEmpty && entries[i].size < 0 {
-                let collapsed = entries[i].c4id != nil && entries[i].c4id != Manifest.emptyListingID
-                if !collapsed {
+                if entries[i].c4id == Manifest.emptyListingID {
                     entries[i].size = 0
                 }
                 continue
