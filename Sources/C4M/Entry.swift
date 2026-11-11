@@ -282,7 +282,11 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
         let regex = try! NSRegularExpression(pattern: #"\[([0-9,\-:]+)\]"#)
         let nsRange = NSRange(name.startIndex ..< name.endIndex, in: name)
         guard let match = regex.firstMatch(in: name, range: nsRange) else {
-            return name
+            // No range notation: not a sequence after all, so it is written
+            // as an ordinary name, SafeName then field escaping, brackets
+            // included. Through 1.0.26 this returned the raw name, the one
+            // path that could write an unescaped space, quote or control byte.
+            return formatName(name, isSequence: false)
         }
         let fullRange = Range(match.range, in: name)!
         let prefix = String(name[name.startIndex ..< fullRange.lowerBound])

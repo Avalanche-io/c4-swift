@@ -303,7 +303,7 @@ public struct Decoder: Sendable {
 
         // 2. Parse name (backslash-escaped, no quoting)
         let nameStart = pos
-        let (rawName, nameEnd) = parseName(line, from: pos)
+        let (rawName, nameEnd) = try parseName(line, from: pos, lineNum: lineNum)
         let name = rawName
         pos = nameEnd
         let rawNameText = Decoder.utf8Slice(chars, nameStart, pos)
@@ -433,7 +433,7 @@ public struct Decoder: Sendable {
     /// All other backslash sequences pass through for UnsafeName.
     /// Directory names end at / (inclusive).
     /// File names end at space followed by ->, <-, <>, c4 prefix, or -
-    private func parseName(_ line: String, from: Int) -> (String, Int) {
+    private func parseName(_ line: String, from: Int, lineNum: Int) throws -> (String, Int) {
         let chars = Array(line.utf8)
         let n = chars.count
         var pos = from
@@ -460,6 +460,17 @@ public struct Decoder: Sendable {
                 continue
             }
 
+            // A double quote is written \" in a name, and a control byte is
+            // encoded by SafeName, so a raw one never comes from a conforming
+            // writer: it is damage, refused rather than read into the name
+            // (name-escape vector).
+            if ch == 0x22 {
+                throw C4MError.invalidEntry(lineNum, "name holds a raw '\"' (written \\\" in a name)")
+            }
+            if ch < 0x20 {
+                throw C4MError.invalidEntry(lineNum, "name holds a raw control byte 0x\(String(format: "%02X", ch)) (SafeName encodes it)")
+            }
+
             // A "/" ends a directory's name, and only where the field ends
             // with it. Anything after it but a space is part of the name,
             // which then holds a "/" and is refused with its line once
@@ -477,6 +488,12 @@ public struct Decoder: Sendable {
             // runs of spaces, so the lookahead skips the whole run first.
             if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: true) {
                 return (String(decoding: buf, as: UTF8.self), pos)
+            }
+            // A space that is not a field boundary would be part of the name,
+            // but a name's space is written "\ ": an unescaped one is damage,
+            // often a damaged C4 ID field that would otherwise join the name.
+            if ch == 0x20 {
+                throw C4MError.invalidEntry(lineNum, "name '\(String(decoding: buf, as: UTF8.self)) …' holds an unescaped space (written \"\\ \" in a name), or its C4 ID field is damaged")
             }
 
             buf.append(ch)
