@@ -8,3 +8,4 @@ Tests/C4MTests/UnicodeNameVector/* -text
 Tests/C4MTests/NameRuleVector/* -text
 Tests/C4MTests/NameEscapeVector/* -text
 Tests/C4MTests/SafeNameVector/* -text
+Tests/C4MTests/ChildlessDirVector/* -text
