@@ -385,14 +385,20 @@ public struct Decoder: Sendable {
             while pos < n && chars[pos] == 0x20 { pos += 1 }
         }
 
-        // 4. Parse C4 ID or null
+        // 4. Parse C4 ID or null. The field is "-", a C4 ID, or omitted;
+        // anything else is an error naming the line. A field that failed to
+        // parse used to be dropped and the entry read as having a null ID,
+        // which turned a truncated or malformed file into "unknown" with no
+        // error: a read error must never become a value, null included.
         var c4id: C4ID? = nil
         if pos < n {
             let remaining = String(line[line.index(line.startIndex, offsetBy: pos)...]).trimmingCharacters(in: .whitespaces)
-            if remaining == "-" {
+            if remaining.isEmpty || remaining == "-" {
                 c4id = nil
-            } else if remaining.hasPrefix("c4"), let parsed = C4ID(remaining) {
+            } else if let parsed = C4ID(remaining) {
                 c4id = parsed
+            } else {
+                throw C4MError.invalidEntry(lineNum, "invalid C4 ID '\(remaining)'")
             }
         }
 
