@@ -162,7 +162,12 @@ public struct Manifest: Sendable, Codable {
     // MARK: - Canonical Form
 
     /// Produce the canonical string for C4 ID computation.
+    ///
+    /// A manifest holding a name the format forbids, at any depth, has no
+    /// canonical text: no conforming c4m spells it, and every decoder refuses
+    /// such a line. It gives "", never text a reader would refuse, as in Go.
     public func canonical() -> String {
+        if entries.contains(where: { isPathName($0.name) }) { return "" }
         guard let minDepth = entries.map(\.depth).min() else { return "" }
 
         let topLevel = entries.filter { $0.depth == minDepth }
@@ -182,7 +187,14 @@ public struct Manifest: Sendable, Codable {
     }
 
     /// Compute the C4 ID of this manifest's canonical form.
+    ///
+    /// A manifest holding a name the format forbids, at any depth, has no C4
+    /// ID (no conforming c4m text exists to hash) and gets the nil ID, the
+    /// format's "unavailable", as in Go.
     public func computeC4ID() -> C4ID {
+        if entries.contains(where: { isPathName($0.name) }) {
+            return C4ID(digest: [UInt8](repeating: 0, count: 64))
+        }
         var copy = self
         copy.canonicalize()
         let text = copy.canonical()
@@ -450,14 +462,16 @@ public struct Manifest: Sendable, Codable {
 
 // MARK: - Path Validation
 
-/// Returns true if name contains path semantics (traversal, separators).
-private func isPathName(_ name: String) -> Bool {
+/// True if `name` is a path, not a bare entry name. Only "/" separates paths
+/// in c4m, and a name may end in "/" only as a directory's marker: a name
+/// holding any other "/", and ".", "..", "./", "../", "/" and "", are path
+/// components (SPECIFICATION.md "Invalid names"; the shared name-rule
+/// vector). A backslash is a literal name character, never a separator.
+/// Go: c4m.isPathName.
+func isPathName(_ name: String) -> Bool {
     if name.isEmpty { return true }
     let base = name.hasSuffix("/") ? String(name.dropLast()) : name
-    if base.isEmpty { return true }
-    if base == "." || base == ".." { return true }
-    if base.contains("/") || base.contains("\\") || base.contains("\0") { return true }
-    return false
+    return base.isEmpty || base == "." || base == ".." || base.contains("/") || base.contains("\0")
 }
 
 // MARK: - Entry Index Key

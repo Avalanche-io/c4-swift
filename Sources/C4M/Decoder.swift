@@ -410,6 +410,11 @@ public struct Decoder: Sendable {
 
         // Unescape SafeName from the parsed name
         let unescapedName = unsafeName(name)
+        // A name is a bare entry name, checked once decoded, so an escaped
+        // "/" is refused as surely as a raw one (name-rule vector).
+        if isPathName(unescapedName) {
+            throw C4MError.invalidEntry(lineNum, "name '\(unescapedName)' is a path, not an entry name (only a directory's trailing / is allowed)")
+        }
 
         return ParsedFields(
             size: size,
@@ -455,8 +460,13 @@ public struct Decoder: Sendable {
                 continue
             }
 
-            // Directory name ends at / (inclusive)
-            if ch == 0x2F { // '/'
+            // A "/" ends a directory's name, and only where the field ends
+            // with it. Anything after it but a space is part of the name,
+            // which then holds a "/" and is refused with its line once
+            // decoded. Before, the name was cut at its first "/" and the
+            // rest of the line failed as a C4 ID field, an accident rather
+            // than the rule (name-rule vector).
+            if ch == 0x2F && (pos + 1 >= n || chars[pos + 1] == 0x20) { // '/'
                 buf.append("/")
                 pos += 1
                 return (buf, pos)
