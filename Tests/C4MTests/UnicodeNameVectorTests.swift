@@ -19,6 +19,12 @@ struct UnicodeNameVectorTests {
     static let link = "\u{94fe}\u{63a5}"
     static let flowDir = "\u{53d1}\u{9001}/"
 
+    /// The tree's ID on this release line: root-id.txt is master's, and
+    /// before the collapsed-directory size rule (1.0.27) the childless
+    /// directory 发送/ canonicalises its null size as 0 (the vector's README,
+    /// "On release lines before 1.0.27"; measured with Go release/1.0.x).
+    static let releaseLineRootID = "c42noMAFKPujc3cScMyQtzuUVo3rPWcrUAcNse8RLteLaJA7UEBWgUczw6b7v6KKeucTed8zxJmCt9aqyHY1A6B4dZ"
+
     @Test("both forms decode to exactly the names, targets and root ID", arguments: ["canonical", "pretty"])
     func decodes(_ form: String) throws {
         let m = try Manifest.unmarshal(try Self.fixture(form, "c4m"))
@@ -28,7 +34,7 @@ struct UnicodeNameVectorTests {
         // Compare bytes, not Swift's canonically equivalent String equality:
         // the NFC and NFD spellings of café.txt are two names.
         #expect(m.entries.map { Array($0.name.utf8) } == want.map { Array($0.utf8) })
-        let rootID = try Self.fixture("root-id", "txt").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rootID = Self.releaseLineRootID
         #expect(m.computeC4ID().string == rootID)
         let link = m.entries.first { Array($0.name.utf8) == Array(Self.link.utf8) }
         #expect(link.map { Array($0.target.utf8) } == Array("\u{76ee}\u{6807}.txt".utf8))
@@ -42,7 +48,7 @@ struct UnicodeNameVectorTests {
         let m = try Manifest.unmarshal(src)
         let out = Encoder().encode(m)
         #expect(Array(out.utf8) == Array(src.utf8))
-        let rootID = try Self.fixture("root-id", "txt").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rootID = Self.releaseLineRootID
         #expect(try Manifest.unmarshal(out).computeC4ID().string == rootID)
     }
 
