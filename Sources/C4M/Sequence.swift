@@ -155,7 +155,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
     let framePattern = try! NSRegularExpression(pattern: #"^(.*?)(\d+)(.*)$"#)
 
     struct FrameInfo {
-        var key: String
+        var key: ByteKey
         var frameNum: Int
     }
 
@@ -169,7 +169,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
 
     // First pass: identify groups by scanning entries in order.
     // Use depth in the key so files at different depths aren't merged.
-    var groups: [String: GroupInfo] = [:]
+    var groups: [ByteKey: GroupInfo] = [:]  // keyed as bytes: NFC and NFD prefixes are two
     var entryFrame: [Int: FrameInfo] = [:]  // entry index -> frame info
 
     for (idx, entry) in manifest.entries.enumerated() {
@@ -188,7 +188,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
 
         guard let frameNum = Int(numStr) else { continue }
 
-        let key = "\(entry.depth)|\(prefix)|\(suffix)|\(numStr.count)"
+        let key = ByteKey("\(entry.depth)|\(prefix)|\(suffix)|\(numStr.count)")
         entryFrame[idx] = FrameInfo(key: key, frameNum: frameNum)
 
         if groups[key] == nil {

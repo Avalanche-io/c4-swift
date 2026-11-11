@@ -24,9 +24,11 @@ public func naturalLess(_ a: String, _ b: String) -> Bool {
             // Text sorts before numeric (per spec)
             return !sa.isNumeric
         } else {
-            // Both text: UTF-8 / codepoint comparison
-            if sa.text != sb.text {
-                return sa.text < sb.text
+            // Both text: UTF-8 byte comparison, as Go's. Swift String
+            // comparison treats the NFC and NFD spellings as equal, which
+            // left their order to chance (unicode-name vector).
+            if !sameBytes(sa.text, sb.text) {
+                return Array(sa.text.utf8).lexicographicallyPrecedes(Array(sb.text.utf8))
             }
         }
     }
