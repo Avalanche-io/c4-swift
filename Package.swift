@@ -18,7 +18,7 @@ let package = Package(
         .testTarget(
             name: "C4MTests",
             dependencies: ["C4M"],
-            resources: [.copy("Vectors"), .copy("ChainVector"), .copy("DeepenVector"), .copy("LinkTargetVector")]
+            resources: [.copy("Vectors"), .copy("ChainVector"), .copy("DeepenVector"), .copy("LinkTargetVector"), .copy("BackslashNameVector"), .copy("DamagedLineVector")]
         ),
     ]
 )
