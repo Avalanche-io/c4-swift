@@ -15,6 +15,10 @@ public struct Manifest: Sendable, Codable {
     /// Inline ID lists keyed by sequence C4 ID (bare concatenation).
     public var rangeData: [C4ID: String]
 
+    /// The C4 ID of an empty listing: the ID of zero bytes. A directory with
+    /// no listed children and this ID is known to be empty.
+    static let emptyListingID = C4ID.identify(data: Data())
+
     public init(
         version: String = "1.0",
         entries: [Entry] = [],
@@ -188,8 +192,8 @@ public struct Manifest: Sendable, Codable {
     /// Propagate metadata from children to parents, modifying in place.
     /// Null values stay null. No default mode/size substitution.
     /// Nil-infectious: any null child -> parent is null. A childless
-    /// directory gets size 0 only when it carries an ID; without one its
-    /// size stays null (nobody read it).
+    /// directory gets size 0 only when its ID is the empty listing's; with
+    /// any other ID (collapsed) or none (unread) its size stays null.
     public mutating func canonicalize() {
         propagateMetadata()
     }
@@ -307,9 +311,14 @@ public struct Manifest: Sendable, Codable {
             // when its ID says so: an empty listing hashes to the
             // empty-content ID. A childless directory with no ID is one
             // nobody read (a chmod 000 directory in a scan): its size stays
-            // null, because 0 beside no ID would claim a known empty.
+            // null, because 0 beside no ID would claim a known empty. A
+            // childless directory with any other ID is collapsed: its
+            // listing lives under that ID, not here, so its size cannot be
+            // derived and stays null. Through 2026-11-11 any non-nil ID gave
+            // 0, an invented value computeC4ID then hashed (childless-dir
+            // vector).
             if childIndices.isEmpty && entries[i].size < 0 {
-                if let id = entries[i].c4id, !id.isNil {
+                if entries[i].c4id == Manifest.emptyListingID {
                     entries[i].size = 0
                 }
                 continue

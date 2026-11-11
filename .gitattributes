@@ -6,3 +6,4 @@ Tests/C4MTests/Legacy/* -text
 Tests/C4MTests/LinkTargetVector/* -text
 Tests/C4MTests/BackslashNameVector/* -text
 Tests/C4MTests/DamagedLineVector/* -text
+Tests/C4MTests/ChildlessDirVector/* -text
