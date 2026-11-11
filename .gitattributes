@@ -4,3 +4,5 @@ Tests/C4MTests/DeepenVector/* -text
 Tests/C4MTests/ZeroNullVector/* -text
 Tests/C4MTests/Legacy/* -text
 Tests/C4MTests/LinkTargetVector/* -text
+Tests/C4MTests/BackslashNameVector/* -text
+Tests/C4MTests/DamagedLineVector/* -text

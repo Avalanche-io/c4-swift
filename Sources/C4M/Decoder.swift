@@ -290,6 +290,12 @@ public struct Decoder: Sendable {
             }
             size = s
         }
+        // The size token ends at a space: "6x a.txt" read as size 6 and the
+        // name "x a.txt", a different entry with no error (damaged-line
+        // vector).
+        if pos < n && chars[pos] != 0x20 {
+            throw C4MError.invalidEntry(lineNum, "invalid size")
+        }
 
         // Skip whitespace
         while pos < n && chars[pos] == 0x20 { pos += 1 }
@@ -431,16 +437,22 @@ public struct Decoder: Sendable {
         while pos < n {
             let ch = chars[pos]
 
-            // Backslash escape: consume c4m field-boundary escapes
+            // A backslash always starts a two-byte escape: a c4m field-
+            // boundary escape (space, quote, [, ]) becomes its literal, and
+            // any other (a SafeName escape such as \\) passes through whole
+            // for UnsafeName, so its second byte never starts an escape of
+            // its own. A name ending in a backslash read back with its C4 ID
+            // swallowed before this (backslash-name vector).
             if ch == 0x5C && pos + 1 < n {
                 let next = chars[pos + 1]
                 if next == 0x20 || next == 0x22 || next == 0x5B || next == 0x5D {
-                    // c4m escapes: space, quote, [, ]
                     buf.append(Character(UnicodeScalar(next)))
-                    pos += 2
-                    continue
+                } else {
+                    buf.append(Character(UnicodeScalar(ch)))
+                    buf.append(Character(UnicodeScalar(next)))
                 }
-                // Pass through other backslash sequences for SafeName/UnsafeName
+                pos += 2
+                continue
             }
 
             // Directory name ends at / (inclusive)
@@ -505,14 +517,18 @@ public struct Decoder: Sendable {
         while pos < n {
             let ch = chars[pos]
 
-            // Backslash escapes: consume space and quote
+            // A backslash always starts a two-byte escape (as in names):
+            // space and quote become literals, any other passes through.
             if ch == 0x5C && pos + 1 < n {
                 let next = chars[pos + 1]
                 if next == 0x20 || next == 0x22 {
                     buf.append(Character(UnicodeScalar(next)))
-                    pos += 2
-                    continue
+                } else {
+                    buf.append(Character(UnicodeScalar(ch)))
+                    buf.append(Character(UnicodeScalar(next)))
                 }
+                pos += 2
+                continue
             }
 
             if ch == 0x20 && Decoder.isFieldBoundary(chars, at: pos, allowLinkOperators: false) {
