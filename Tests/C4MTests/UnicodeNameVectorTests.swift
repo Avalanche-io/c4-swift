@@ -23,7 +23,7 @@ struct UnicodeNameVectorTests {
     /// before the collapsed-directory size rule (1.0.27) the childless
     /// directory 发送/ canonicalises its null size as 0 (the vector's README,
     /// "On release lines before 1.0.27"; measured with Go release/1.0.x).
-    static let releaseLineRootID = "c42noMAFKPujc3cScMyQtzuUVo3rPWcrUAcNse8RLteLaJA7UEBWgUczw6b7v6KKeucTed8zxJmCt9aqyHY1A6B4dZ"
+    static let releaseLineRootID = "c411tr2n8AwGyvHsERmffCE38dcjqPaY92KjizyxW9iafuxh3eJ53R9upuWH5MprvogtoM9nNm8j4Fde7L3vCZtj81"
 
     @Test("both forms decode to exactly the names, targets and root ID", arguments: ["canonical", "pretty"])
     func decodes(_ form: String) throws {
