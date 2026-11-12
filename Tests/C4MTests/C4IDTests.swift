@@ -105,131 +105,102 @@ struct C4IDTests {
         #expect(parsed == id)
     }
 
-    // MARK: - c4m-aware identification
+    // MARK: - A file's C4 ID is its bytes
 
-    @Test("pretty and canonical c4m produce same ID via identifyC4mAware")
-    func c4mAwarePrettyAndCanonical() throws {
-        // Build a manifest with known entries
-        var manifest = Manifest()
-        manifest.addEntry(Entry(
-            mode: .file644,
-            timestamp: Date(timeIntervalSince1970: 1700000000),
-            size: 42,
-            name: "hello.txt",
-            c4id: C4ID.identify(string: "hello content")
-        ))
-        manifest.addEntry(Entry(
-            mode: .file644,
-            timestamp: Date(timeIntervalSince1970: 1700000100),
-            size: 99,
-            name: "world.txt",
-            c4id: C4ID.identify(string: "world content")
-        ))
-
-        // Get canonical and pretty forms
-        let canonical = manifest.marshal()
-        let pretty = manifest.marshalPretty()
-
-        // They should differ in formatting
-        #expect(canonical != pretty, "canonical and pretty forms should differ in formatting")
-
-        // Both should produce the same C4 ID via c4m-aware identification
-        let canonicalID = C4ID.identifyC4mAware(data: Data(canonical.utf8))
-        let prettyID = C4ID.identifyC4mAware(data: Data(pretty.utf8))
-        #expect(canonicalID == prettyID, "pretty and canonical c4m should have the same C4 ID")
-
-        // The c4m-aware ID should equal the raw hash of canonical bytes
-        let rawCanonicalID = C4ID.identify(data: Data(canonical.utf8))
-        #expect(canonicalID == rawCanonicalID, "c4m-aware ID should match raw hash of canonical bytes")
-    }
-
-    @Test("c4m-aware identification falls back to raw bytes for non-c4m data")
-    func c4mAwareFallback() {
-        let data = Data("this is not a c4m file".utf8)
-        let rawID = C4ID.identify(data: data)
-        let awareID = C4ID.identifyC4mAware(data: data)
-        #expect(rawID == awareID, "non-c4m data should produce same ID regardless of method")
-    }
-
-    @Test("looksLikeC4m detects c4m-like content")
-    func looksLikeC4mDetection() {
-        // Valid c4m-like first lines
-        #expect(C4ID.looksLikeC4m(Data("-rw-r--r-- 0 42 file.txt -\n".utf8)))
-        #expect(C4ID.looksLikeC4m(Data("drwxr-xr-x 0 0 dir/ -\n".utf8)))
-        #expect(C4ID.looksLikeC4m(Data("lrwxrwxrwx 0 0 link -> target -\n".utf8)))
-        #expect(C4ID.looksLikeC4m(Data("- 0 42 file.txt -\n".utf8)))
-
-        // Leading blank lines should be skipped
-        #expect(C4ID.looksLikeC4m(Data("\n\n-rw-r--r-- 0 42 file.txt -\n".utf8)))
-
-        // Non-c4m content
-        #expect(!C4ID.looksLikeC4m(Data("hello world".utf8)))
-        #expect(!C4ID.looksLikeC4m(Data("".utf8)))
-        #expect(!C4ID.looksLikeC4m(Data("{ json }".utf8)))
-    }
-
-    @Test("c4m-aware with directory entries produces same ID from pretty and canonical")
-    func c4mAwareWithDirectories() throws {
-        var manifest = Manifest()
-        manifest.addEntry(Entry(
-            mode: .dir755,
-            timestamp: Date(timeIntervalSince1970: 1700000000),
-            size: -1,
-            name: "src/"
-        ))
-        manifest.addEntry(Entry(
-            mode: .file644,
-            timestamp: Date(timeIntervalSince1970: 1700000000),
-            size: 100,
-            name: "main.swift",
-            c4id: C4ID.identify(string: "main content"),
-            depth: 1
-        ))
-        manifest.addEntry(Entry(
-            mode: .file644,
-            timestamp: Date(timeIntervalSince1970: 1700000000),
-            size: 50,
-            name: "README.md",
-            c4id: C4ID.identify(string: "readme content")
-        ))
-
-        let canonical = manifest.marshal()
-        let pretty = manifest.marshalPretty()
-
-        #expect(canonical != pretty)
-
-        let canonicalID = C4ID.identifyC4mAware(data: Data(canonical.utf8))
-        let prettyID = C4ID.identifyC4mAware(data: Data(pretty.utf8))
-        #expect(canonicalID == prettyID)
-    }
-
-    @Test("identify(url:) uses c4m-aware for .c4m files")
-    func identifyURLc4mAware() async throws {
-        var manifest = Manifest()
-        manifest.addEntry(Entry(
-            mode: .file644,
-            timestamp: Date(timeIntervalSince1970: 1700000000),
-            size: 42,
-            name: "test.txt",
-            c4id: C4ID.identify(string: "test")
-        ))
-
-        let pretty = manifest.marshalPretty()
-        let canonical = manifest.marshal()
-
-        // Write pretty form to a .c4m file
-        let tmpDir = FileManager.default.temporaryDirectory
-        let prettyURL = tmpDir.appendingPathComponent("test-\(UUID().uuidString).c4m")
-        let canonicalURL = tmpDir.appendingPathComponent("test-\(UUID().uuidString).c4m")
-        defer {
-            try? FileManager.default.removeItem(at: prettyURL)
-            try? FileManager.default.removeItem(at: canonicalURL)
+    /// An independent C4 ID: SHA-512 from /usr/bin/shasum (not CryptoKit),
+    /// base58 with the C4 alphabet, "c4" prefix, padded to 90 characters.
+    static func independentC4ID(_ data: Data) throws -> String {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("c4idind-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try data.write(to: tmp)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/shasum")
+        p.arguments = ["-a", "512", tmp.path]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try p.run()
+        p.waitUntilExit()
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let hex = Array(out.split(separator: " ")[0])
+        var digest: [UInt8] = []
+        var k = 0
+        while k + 1 < hex.count {
+            digest.append(UInt8(String(hex[k...k + 1]), radix: 16)!)
+            k += 2
         }
-        try Data(pretty.utf8).write(to: prettyURL)
-        try Data(canonical.utf8).write(to: canonicalURL)
+        let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+        var num = digest
+        var chars: [Character] = []
+        while num.contains(where: { $0 != 0 }) {
+            var rem = 0
+            var next: [UInt8] = []
+            for b in num {
+                let acc = rem * 256 + Int(b)
+                let q = acc / 58
+                rem = acc % 58
+                if !next.isEmpty || q != 0 { next.append(UInt8(q)) }
+            }
+            chars.append(alphabet[rem])
+            num = next
+        }
+        let body = String(chars.reversed())
+        return "c4" + String(repeating: "1", count: 88 - body.count) + body
+    }
 
-        let prettyID = try await C4ID.identify(url: prettyURL)
-        let canonicalID = try await C4ID.identify(url: canonicalURL)
-        #expect(prettyID == canonicalID, "identify(url:) should produce same ID for pretty and canonical .c4m files")
+    static func nestedManifest() -> Manifest {
+        var m = Manifest()
+        m.addEntry(Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 1700000000), size: 50,
+                         name: "README.md", c4id: C4ID.identify(string: "readme content")))
+        m.addEntry(Entry(mode: .dir755, timestamp: Date(timeIntervalSince1970: 1700000000), size: -1, name: "src/"))
+        m.addEntry(Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 1700000000), size: 100,
+                         name: "main.swift", c4id: C4ID.identify(string: "main content"), depth: 1))
+        m.canonicalize()
+        return m
+    }
+
+    @Test("the independent encoder is right")
+    func independentEncoder() throws {
+        #expect(try Self.independentC4ID(Data()) ==
+            "c459dsjfscH38cYeXXYogktxf4Cd9ibshE3BHUo6a58hBXmRQdZrAkZzsWcbWtDg5oQstpDuni4Hirj75GEmTc1sFT")
+    }
+
+    @Test("identify(url:) gives a c4m file its byte ID, under any name")
+    func identifyURLIsBytes() async throws {
+        let m = Self.nestedManifest()
+        let pretty = Data(m.marshalPretty().utf8)
+        let canonical = Data(m.marshal().utf8)
+        #expect(pretty != canonical, "the pretty form is not canonical")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("c4id-urls-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for (name, data) in [("tree.c4m", pretty), ("tree.bin", pretty), ("tree.txt", pretty), ("canon.c4m", canonical)] {
+            let url = dir.appendingPathComponent(name)
+            try data.write(to: url)
+            let got = try await C4ID.identify(url: url)
+            #expect(got.string == (try Self.independentC4ID(data)), "\(name): identify(url:) is not the byte ID")
+        }
+    }
+
+    @Test("identify(data:) is the byte ID; the description ID is computeC4ID")
+    func identifyDataAndDescription() throws {
+        let m = Self.nestedManifest()
+        let pretty = Data(m.marshalPretty().utf8)
+        let canonical = Data(m.marshal().utf8)
+        #expect(C4ID.identify(data: pretty).string == (try Self.independentC4ID(pretty)))
+        #expect(C4ID.identify(data: canonical).string == (try Self.independentC4ID(canonical)))
+        // Two files, two byte IDs; one description, one description ID.
+        let a = try Manifest.unmarshal(pretty).computeC4ID()
+        let b = try Manifest.unmarshal(canonical).computeC4ID()
+        #expect(a == b)
+        #expect(a != C4ID.identify(data: pretty))
+    }
+
+    @Test("identifyC4mAware (deprecated) is the byte ID")
+    @available(*, deprecated)
+    func identifyC4mAwareIsBytes() throws {
+        let m = Self.nestedManifest()
+        for data in [Data(m.marshalPretty().utf8), Data(m.marshal().utf8), Data("not c4m".utf8), Data()] {
+            #expect(C4ID.identifyC4mAware(data: data).string == (try Self.independentC4ID(data)))
+        }
     }
 }
