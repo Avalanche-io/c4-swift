@@ -123,7 +123,7 @@ public struct Encoder: Sendable {
         }
 
         let sizeStr: String
-        if entry.size < 0 {
+        if entry.sizeIsNull {
             let maxWidth = Entry.formatSizeWithCommas(maxSize).count
             sizeStr = String(repeating: " ", count: maxWidth - 1) + "-"
         } else {

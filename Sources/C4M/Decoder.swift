@@ -256,6 +256,13 @@ public struct Decoder: Sendable {
             entry.mode = .null
         }
 
+        // A 0 beside the C4 ID of non-empty content is a null size written
+        // by a surface that has no "-" (a mount); hold it as null so every
+        // consumer sees one value for one meaning (Entry.sizeIsNull, c4 #68).
+        if entry.sizeIsNull {
+            entry.size = -1
+        }
+
         // Detect sequence notation in raw name
         if hasUnescapedSequenceNotation(parsed.rawName) {
             entry.isSequence = true

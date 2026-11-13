@@ -15,9 +15,10 @@ public struct Manifest: Sendable, Codable {
     /// Inline ID lists keyed by sequence C4 ID (bare concatenation).
     public var rangeData: [C4ID: String]
 
-    /// The C4 ID of an empty listing: the ID of zero bytes. A directory with
-    /// no listed children and this ID is known to be empty.
-    static let emptyListingID = C4ID.identify(data: Data())
+    /// The C4 ID of an empty listing, which is the ID of zero bytes
+    /// (`Entry.emptyContentID`): one value, named for the directory reading.
+    /// A directory with no listed children and this ID is known to be empty.
+    static let emptyListingID = Entry.emptyContentID
 
     public init(
         version: String = "1.0",
@@ -331,7 +332,7 @@ public struct Manifest: Sendable, Codable {
             // derived and stays null. Through 2026-11-11 any non-nil ID gave
             // 0, an invented value computeC4ID then hashed (childless-dir
             // vector).
-            if childIndices.isEmpty && entries[i].size < 0 {
+            if childIndices.isEmpty && entries[i].sizeIsNull {
                 if entries[i].c4id == Manifest.emptyListingID {
                     entries[i].size = 0
                 }
@@ -341,7 +342,7 @@ public struct Manifest: Sendable, Codable {
             if !entries[i].hasNullValues { continue }
 
             // Propagate size (nil-infectious)
-            if entries[i].size < 0 {
+            if entries[i].sizeIsNull {
                 entries[i].size = calculateDirectorySize(childIndices)
             }
 
@@ -370,7 +371,7 @@ public struct Manifest: Sendable, Codable {
     private func calculateDirectorySize(_ indices: [Int]) -> Int64 {
         var total: Int64 = 0
         for idx in indices {
-            if entries[idx].size < 0 { return -1 }
+            if entries[idx].sizeIsNull { return -1 }
             total += entries[idx].size
         }
         // Add the byte length of the canonical c4m content for this directory

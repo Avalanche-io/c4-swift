@@ -102,8 +102,25 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// mode (`FileMode.zero`, "----------") is a value, not a null.
     public var hasNullValues: Bool {
         let nullTimestamp = timestamp == Entry.nullTimestamp
-        let nullSize = size < 0
-        return mode.isNull || nullTimestamp || nullSize
+        return mode.isNull || nullTimestamp || sizeIsNull
+    }
+
+    /// The C4 ID of zero bytes: the only C4 ID a size of 0 can truthfully
+    /// sit beside, and the ID of an empty directory's listing.
+    public static let emptyContentID = C4ID.identify(data: Data())
+
+    /// True if the entry's size is unknown. -1 is null. So is a stated 0
+    /// beside the C4 ID of content that is not empty: a filesystem surface
+    /// has no number for "unknown", so a null size can only show there as
+    /// 0, and a 0 is contradicted by every C4 ID except `emptyContentID`
+    /// (c4 #68; ruled 2026-11-08, decided 2026-11-13 by the release lead;
+    /// reversible). A 0 with no C4 ID is a known zero (a structure-level
+    /// scan of an empty file). Symlinks are exempt: their size is the
+    /// link's own and their C4 ID is the target's.
+    public var sizeIsNull: Bool {
+        if size < 0 { return true }
+        guard size == 0, let id = c4id, !id.isNil else { return false }
+        return id != Entry.emptyContentID && !isSymlink
     }
 
     /// The Unix epoch sentinel used for null/unspecified timestamps.
@@ -120,7 +137,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
         let modeStr = mode.description
 
         let timeStr = Entry.canonicalTimestamp(timestamp)
-        let sizeStr = size < 0 ? "-" : "\(size)"
+        let sizeStr = sizeIsNull ? "-" : "\(size)"
         let nameStr = Entry.formatName(name, isSequence: isSequence)
 
         var parts = [modeStr, timeStr, sizeStr, nameStr]
@@ -165,7 +182,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
         }
 
         let sizeStr: String
-        if size < 0 {
+        if sizeIsNull {
             sizeStr = "-"
         } else if displayFormat {
             sizeStr = Entry.formatSizeWithCommas(size)
