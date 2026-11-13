@@ -201,6 +201,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
     // to skip and where to insert the sequence entry (at the first member).
     var skipIndices: Set<Int> = []
     var insertAt: [Int: Entry] = [:]  // entry index -> sequence entry to insert
+    var rangeData: [C4ID: String] = [:]  // sequence ID -> its frames' ID list
 
     for (_, group) in groups {
         if group.frames.count < effectiveMin { continue }
@@ -221,8 +222,18 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
                 var totalSize: Int64 = 0
                 var nullSize = false
                 var latestTime = Date.distantPast
+                // The range's identity is the ordered list of its frames'
+                // C4 IDs, bare-concatenated. SPECIFICATION.md, "Media File
+                // Sequences": "Sequences with any null (uncomputed) member C4
+                // IDs cannot be folded", as in c4 core. A symlink frame's nil
+                // ID is listed as is, as core lists it.
+                var idList = ""
+                var hasNilID = false
                 for idx in indicesInRange {
                     let entry = manifest.entries[idx]
+                    let id = entry.c4id ?? .void
+                    if id.isNil && !entry.isSymlink { hasNilID = true }
+                    idList += id.string
                     // A frame whose size is unknown makes the total unknown,
                     // as a null child does a directory's size. Through
                     // 2026-11-13 its -1 was added in, so the range claimed a
@@ -235,7 +246,10 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
                     }
                     if entry.timestamp > latestTime { latestTime = entry.timestamp }
                 }
+                if hasNilID { continue }
                 if nullSize { totalSize = -1 }
+                let seqID = C4ID.identify(string: idList)
+                rangeData[seqID] = idList
 
                 let firstEntry = manifest.entries[indicesInRange.min()!]
                 let seqEntry = Entry(
@@ -243,6 +257,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
                     timestamp: latestTime,
                     size: totalSize,
                     name: pattern,
+                    c4id: seqID,
                     depth: group.depth,
                     isSequence: true,
                     pattern: pattern
@@ -257,7 +272,7 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
     }
 
     // Second pass: emit entries in original order, replacing sequences in-place.
-    var result = Manifest(version: manifest.version)
+    var result = Manifest(version: manifest.version, rangeData: rangeData)
     for (idx, entry) in manifest.entries.enumerated() {
         if let seqEntry = insertAt[idx] {
             result.addEntry(seqEntry)
