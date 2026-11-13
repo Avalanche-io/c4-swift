@@ -283,7 +283,7 @@ let raw = unsafeName(safe)                        // original bytes restored
 ```
 
 Three-tier encoding:
-- **Tier 1**: Printable UTF-8 passes through unchanged
+- **Tier 1**: Printable UTF-8 passes through unchanged (printable is pinned to Unicode 17.0.0, from the shared `printable-17.0.0.txt`, never the runtime's tables)
 - **Tier 2**: Backslash escapes for common control characters (`\0`, `\t`, `\n`, `\r`, `\\`)
 - **Tier 3**: Braille-encoded byte sequences delimited by the currency sign for all other non-printable bytes
 
