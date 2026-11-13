@@ -4,3 +4,6 @@
 # suite allows every test in it. A shared-vector (conformance) test may be
 # listed only for an OS where its condition genuinely holds: never a
 # .disabled trait, and no symlink or Unicode-version skip on macOS or Linux.
+#
+# Measured on CI on 2026-11-13: macos-15 (Swift 6.1.2) and macos-latest
+# (macos-26, Swift 6.3.3) skip nothing, so the list is empty.

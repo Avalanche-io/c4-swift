@@ -111,6 +111,8 @@ When adding a new feature, add corresponding tests. When fixing a bug, add a reg
 
 Cross-language test vectors in `Tests/C4MTests/Vectors/` ensure compatibility with the Go reference implementation. If you change encoding or parsing behavior, verify against the vectors.
 
+No test may skip unnoticed. CI runs `swift test` with swift-testing's event stream and `Scripts/skips.swift` fails the job on any skipped or cancelled test that `Scripts/allowed-skips.txt` does not name for that OS. A shared-vector test is never `.disabled`, and is listed only for an OS where its condition genuinely holds.
+
 ## Pull Requests
 
 1. Create a branch from `main` for your work.

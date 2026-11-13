@@ -20,5 +20,4 @@ jobs:
       # Every skip, with its reason; a skip Scripts/allowed-skips.txt does not
       # name fails the job. Runs when the tests failed too.
       - if: success() || failure()
-        continue-on-error: true
         run: swift Scripts/skips.swift Scripts/allowed-skips.txt "$RUNNER_TEMP/events.jsonl"
