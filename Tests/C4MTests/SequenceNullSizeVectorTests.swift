@@ -1,0 +1,72 @@
+import Testing
+import Foundation
+@testable import C4M
+
+/// Cross-implementation vector: a folded sequence with a null-size frame
+/// (c4 #155; decided 2026-11-13 by the release lead; reversible).
+/// SequenceNullSizeVector/ is a byte-identical copy of the Go reference
+/// repo's c4m/testdata/sequence-null-size-vector/ at c4 commit 7a6ba94
+/// (#156; see its README.md).
+///
+/// A folded sequence's size is the sum of its frames' sizes, and null if any
+/// frame's size is null (`-`; on 1.0.x a 0 is a known size, see the last
+/// test): "One cannot use size as an expectation if there are nulls
+/// present, so we must say nothing." This port folds sequences
+/// (`detectSequences`), so both halves apply: decoding `folded.c4m`, and
+/// folding `frames.c4m` to it.
+@Suite("Sequence Null-size Vector Conformance")
+struct SequenceNullSizeVectorTests {
+
+    private static func text(_ name: String, _ ext: String) throws -> String {
+        let url = Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "SequenceNullSizeVector")!
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private static func rootID() throws -> String {
+        try text("folded-root-id", "txt").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @Test("folded.c4m decodes to the root ID")
+    func decodedRootID() throws {
+        let m = try Manifest.unmarshal(try Self.text("folded", "c4m"))
+        #expect(m.computeC4ID().string == (try Self.rootID()))
+    }
+
+    @Test("the plate range's size is known 24 and the shot range's is null")
+    func decodedSizes() throws {
+        let m = try Manifest.unmarshal(try Self.text("folded", "c4m"))
+        let plate = try #require(m.entries.first { $0.name == "plate.[1001-1004].exr" })
+        let shot = try #require(m.entries.first { $0.name == "shot.[1001-1004].exr" })
+        #expect(plate.size == 24)
+        #expect(shot.size < 0)
+    }
+
+    @Test("folded.c4m re-encodes to itself byte for byte")
+    func reencode() throws {
+        let m = try Manifest.unmarshal(try Self.text("folded", "c4m"))
+        #expect(try m.marshal() == (try Self.text("folded", "c4m")))
+    }
+
+    @Test("frames.c4m folds (minimum length 3) to folded.c4m byte for byte",
+          arguments: ["frames"])
+    func fold(form: String) throws {
+        let frames = try Manifest.unmarshal(try Self.text(form, "c4m"))
+        let folded = detectSequences(in: frames, minLength: 3)
+        let shot = try #require(folded.entries.first { $0.name == "shot.[1001-1004].exr" }, "\(form) did not fold")
+        #expect(shot.size < 0, "\(form): shot range size \(shot.size)")
+        #expect(try folded.marshal() == (try Self.text("folded", "c4m")))
+        #expect(folded.computeC4ID().string == (try Self.rootID()))
+    }
+
+    /// A known 1.0.x difference. The rule that a size of 0 beside a C4 ID
+    /// other than the empty content's is null (c4 #68) is not on this line,
+    /// so frames-zero-spelled.c4m's 0 is a known size here and its shot
+    /// range folds to a known size. Main folds it to folded.c4m. This test
+    /// pins the line's behaviour so that backporting c4 #68 shows here.
+    @Test("1.0.x: frames-zero-spelled.c4m's 0 is a known size, so its shot range is known (c4 #68 is not on this line)")
+    func zeroSpelledKnownOn1x() throws {
+        let frames = try Manifest.unmarshal(try Self.text("frames-zero-spelled", "c4m"))
+        let shot = try #require(detectSequences(in: frames, minLength: 3).entries.first { $0.name == "shot.[1001-1004].exr" })
+        #expect(shot.size >= 0, "shot range size \(shot.size)")
+    }
+}

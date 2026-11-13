@@ -124,12 +124,16 @@ struct SequenceTests {
     @Test("Detect sequences in manifest")
     func detectInManifest() {
         var manifest = Manifest()
+        var ids: [C4ID] = []
         for i in 1 ... 10 {
+            let id = C4ID.identify(string: "frame \(i)")
+            ids.append(id)
             manifest.addEntry(Entry(
                 mode: .file644,
                 timestamp: Date(),
                 size: 1024,
-                name: String(format: "frame.%04d.exr", i)
+                name: String(format: "frame.%04d.exr", i),
+                c4id: id
             ))
         }
         manifest.addEntry(Entry(mode: .file644, size: 100, name: "readme.txt"))
@@ -140,6 +144,32 @@ struct SequenceTests {
         let seqEntry = result.entries.first { $0.isSequence }
         #expect(seqEntry != nil)
         #expect(seqEntry?.pattern == "frame.[0001-0010].exr")
+        // The range's C4 ID is the ID of its frames' IDs, bare-concatenated
+        // in frame order, and that list is carried as inline range data.
+        let list = ids.map(\.string).joined()
+        #expect(seqEntry?.c4id == C4ID.identify(string: list))
+        #expect(result.rangeData == [C4ID.identify(string: list): list])
+    }
+
+    /// A port of the reference rule, not a new one. SPECIFICATION.md, "Media
+    /// File Sequences": "Sequences with any null (uncomputed) member C4 IDs
+    /// cannot be folded". A range's identity is its frames' C4 IDs, so c4
+    /// core's `SequenceDetector.DetectSequences` leaves such a run unfolded.
+    @Test("Frames with no C4 ID do not fold")
+    func detectNeedsIDs() {
+        var manifest = Manifest()
+        for i in 1 ... 4 {
+            manifest.addEntry(Entry(
+                mode: .file644,
+                size: 1024,
+                name: String(format: "frame.%04d.exr", i),
+                c4id: i == 2 ? nil : C4ID.identify(string: "frame \(i)")
+            ))
+        }
+        let result = detectSequences(in: manifest)
+        #expect(result.entries.count == 4)
+        #expect(result.entries.allSatisfy { !$0.isSequence })
+        #expect(result.rangeData.isEmpty)
     }
 
     /// A folded sequence's size is the sum of its frames' sizes, and a frame
