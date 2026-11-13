@@ -18,7 +18,17 @@ public struct Encoder: Sendable {
     /// Encode a manifest to its C4M text representation.
     /// Entry-only: no header, no directives. A set `base` is written first,
     /// as a bare C4 ID line; a manifest with no base has no bare line.
-    public func encode(_ manifest: Manifest) -> String {
+    ///
+    /// Throws `C4MError.pathTraversal` for a name the format forbids at any
+    /// depth (a name holding `/` other than a directory's trailing one, or
+    /// `.`, `..`): no conforming c4m spells it, so the encoder writes no
+    /// text a reader would refuse, as Go's encoder does. Through 1.0.x encode
+    /// could not refuse and wrote such names out (decided 2026-11-13 by the
+    /// release lead; reversible; a 1.1 API change).
+    public func encode(_ manifest: Manifest) throws -> String {
+        if let bad = manifest.entries.first(where: { isPathName($0.name) }) {
+            throw C4MError.pathTraversal(bad.name)
+        }
         var m = manifest
         m.sortEntries()
 
@@ -169,12 +179,12 @@ public struct Encoder: Sendable {
 
 extension Manifest {
     /// Encode to C4M string.
-    public func marshal() -> String {
-        Encoder().encode(self)
+    public func marshal() throws -> String {
+        try Encoder().encode(self)
     }
 
     /// Encode to pretty-printed C4M string.
-    public func marshalPretty() -> String {
-        Encoder(pretty: true).encode(self)
+    public func marshalPretty() throws -> String {
+        try Encoder(pretty: true).encode(self)
     }
 }

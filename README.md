@@ -108,8 +108,8 @@ let manifest = try Manifest.unmarshal(c4mString)
 let manifest = try Manifest.unmarshal(c4mData)
 
 // Encode to c4m text
-let text = manifest.marshal()          // standard c4m text format
-let pretty = manifest.marshalPretty()  // aligned columns, comma-separated sizes
+let text = try manifest.marshal()      // standard c4m text format; throws on a path-like name
+let pretty = try manifest.marshalPretty()  // aligned columns, comma-separated sizes
 
 // Compute the C4 ID of the manifest itself
 let manifestID = manifest.computeC4ID()

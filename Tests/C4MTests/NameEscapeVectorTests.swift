@@ -49,7 +49,7 @@ struct NameEscapeVectorTests {
         var m = Manifest()
         m.addEntry(Entry(mode: FileMode(rawValue: 0o644), timestamp: Date(timeIntervalSince1970: 1767323045),
                          size: 1, name: name, c4id: C4ID.identify(string: "x"), isSequence: true))
-        let text = Encoder().encode(m)
+        let text = try Encoder().encode(m)
         #expect(!text.contains("bad seq"))
         #expect(!text.utf8.contains(0x01))
         let back = try Manifest.unmarshal(text)

@@ -14,7 +14,7 @@ struct IDFieldErrorTests {
         let entry = Entry(mode: FileMode(rawValue: 0o644), timestamp: Date(timeIntervalSince1970: 1_767_323_045),
                           size: 12, name: "a.txt", c4id: id)
         let m = Manifest(entries: [entry])
-        return m.marshal()
+        return try m.marshal()
     }
 
     @Test("the library's own text decodes")

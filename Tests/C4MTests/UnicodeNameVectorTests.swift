@@ -40,7 +40,7 @@ struct UnicodeNameVectorTests {
     func roundTrips() throws {
         let src = try Self.fixture("canonical", "c4m")
         let m = try Manifest.unmarshal(src)
-        let out = Encoder().encode(m)
+        let out = try Encoder().encode(m)
         #expect(Array(out.utf8) == Array(src.utf8))
         let rootID = try Self.fixture("root-id", "txt").trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(try Manifest.unmarshal(out).computeC4ID().string == rootID)

@@ -75,16 +75,17 @@ struct NameRuleVectorTests {
         #expect(isPathName("a/b.txt"))
     }
 
-    /// The encoder half is held: `Encoder.encode` returns `String` and cannot
-    /// refuse without becoming `throws`, a breaking change to a published
-    /// API, which is a release decision put to Joshua (2026-11-11). Until it
-    /// is decided the encoder writes these names raw, as through 1.0.26.
-    @Test("the encoder refuses a forbidden name", .disabled("held: Encoder.encode() throws is a breaking API change, awaiting Joshua's decision"))
+    /// The encoder refuses a forbidden name: `encode` throws
+    /// `pathTraversal` and writes nothing (decided 2026-11-13 by the release
+    /// lead; reversible; a 1.1 API change). Through 1.0.x it could not refuse.
+    @Test("the encoder refuses a forbidden name")
     func encoderRefuses() {
         for name in Self.cases.values {
             var m = Manifest()
             m.addEntry(Entry(mode: FileMode(rawValue: 0o644), timestamp: Self.ts, size: 1, name: name))
-            #expect(!Encoder().encode(m).contains(" \(name) "), "\(name) was written")
+            #expect(throws: C4MError.self, "\(name) must be refused") {
+                try Encoder().encode(m)
+            }
         }
     }
 }

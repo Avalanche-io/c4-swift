@@ -42,7 +42,7 @@ struct ChildlessDirVectorTests {
     func writesNormalized() throws {
         var m = try Manifest.unmarshal(try Self.text("stated", "c4m"))
         m.canonicalize()
-        #expect(m.marshal() == (try Self.text("normalized", "c4m")))
+        #expect(try m.marshal() == (try Self.text("normalized", "c4m")))
     }
 
     @Test("the normalized file's own bytes are the description")

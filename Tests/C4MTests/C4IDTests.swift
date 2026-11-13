@@ -167,8 +167,8 @@ struct C4IDTests {
     @Test("identify(url:) gives a c4m file its byte ID, under any name")
     func identifyURLIsBytes() async throws {
         let m = Self.nestedManifest()
-        let pretty = Data(m.marshalPretty().utf8)
-        let canonical = Data(m.marshal().utf8)
+        let pretty = Data(try m.marshalPretty().utf8)
+        let canonical = Data(try m.marshal().utf8)
         #expect(pretty != canonical, "the pretty form is not canonical")
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("c4id-urls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -184,8 +184,8 @@ struct C4IDTests {
     @Test("identify(data:) is the byte ID; the description ID is computeC4ID")
     func identifyDataAndDescription() throws {
         let m = Self.nestedManifest()
-        let pretty = Data(m.marshalPretty().utf8)
-        let canonical = Data(m.marshal().utf8)
+        let pretty = Data(try m.marshalPretty().utf8)
+        let canonical = Data(try m.marshal().utf8)
         #expect(C4ID.identify(data: pretty).string == (try Self.independentC4ID(pretty)))
         #expect(C4ID.identify(data: canonical).string == (try Self.independentC4ID(canonical)))
         // Two files, two byte IDs; one description, one description ID.

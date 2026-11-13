@@ -118,10 +118,10 @@ struct ZeroNullVectorTests {
     func canonicalRoundTrip() throws {
         let text = try Self.fixture("canonical", "c4m")
         let m = try Manifest.unmarshal(text)
-        #expect(m.marshal() == text)
+        #expect(try m.marshal() == text)
         // And the pretty form, re-encoded canonically, lands on the same bytes.
         let fromPretty = try Manifest.unmarshal(try Self.fixture("pretty", "c4m"))
-        #expect(fromPretty.marshal() == text)
+        #expect(try fromPretty.marshal() == text)
     }
 
     @Test("pretty re-encoding keeps the mode spellings of pretty.c4m line by line")
@@ -129,7 +129,7 @@ struct ZeroNullVectorTests {
         let text = try Self.fixture("pretty", "c4m")
         let m = try Manifest.unmarshal(text)
         let want = text.split(separator: "\n").map { $0.split(separator: " ", omittingEmptySubsequences: true)[0] }
-        let got = m.marshalPretty().split(separator: "\n").map { $0.split(separator: " ", omittingEmptySubsequences: true)[0] }
+        let got = try m.marshalPretty().split(separator: "\n").map { $0.split(separator: " ", omittingEmptySubsequences: true)[0] }
         #expect(got == want)
         #expect(want.map(String.init) == ["-rw-r--r--", "-", "----------", "drwxr-xr-x", "d---------", "-rw-r--r--", "d---------"])
     }
@@ -152,7 +152,7 @@ struct ZeroNullVectorTests {
     func legacyReencode() throws {
         let text = try Self.fixture("ten-dash-null-1.0.21", "c4m", in: "Legacy")
         let m = try Manifest.unmarshal(text)
-        for out in [m.marshal(), m.marshalPretty()] {
+        for out in [try m.marshal(), try m.marshalPretty()] {
             for line in out.split(separator: "\n") {
                 let fields = line.split(separator: " ", omittingEmptySubsequences: true)
                 let mode = fields[0]
@@ -169,7 +169,7 @@ struct ZeroNullVectorTests {
     @Test("a ten-dash directory decoded as legacy null round-trips through canonical form as '-'")
     func legacyDirectoryCanonical() throws {
         let m = try Manifest.unmarshal(try Self.fixture("ten-dash-null-1.0.21", "c4m", in: "Legacy"))
-        let again = try Manifest.unmarshal(m.marshal())
+        let again = try Manifest.unmarshal(try m.marshal())
         #expect(again.entries == m.entries)
         #expect(again.computeC4ID() == m.computeC4ID())
     }

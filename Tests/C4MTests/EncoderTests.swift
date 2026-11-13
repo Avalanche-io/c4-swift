@@ -6,7 +6,7 @@ import Foundation
 struct EncoderTests {
 
     @Test("Encode basic manifest")
-    func encodeBasic() {
+    func encodeBasic() throws {
         var m = Manifest()
         m.addEntry(Entry(
             mode: .file644,
@@ -15,7 +15,7 @@ struct EncoderTests {
             name: "file.txt"
         ))
 
-        let output = m.marshal()
+        let output = try m.marshal()
         // No header - entry-only format
         #expect(!output.hasPrefix("@"))
         #expect(output.contains("-rw-r--r--"))
@@ -24,19 +24,19 @@ struct EncoderTests {
     }
 
     @Test("Encode empty manifest")
-    func encodeEmpty() {
+    func encodeEmpty() throws {
         let m = Manifest()
-        let output = m.marshal()
+        let output = try m.marshal()
         #expect(output == "")
     }
 
     @Test("Encode sorts entries correctly")
-    func encodeSorts() {
+    func encodeSorts() throws {
         var m = Manifest()
         m.addEntry(Entry(mode: .dir755, name: "dir/"))
         m.addEntry(Entry(mode: .file644, name: "file.txt"))
 
-        let output = m.marshal()
+        let output = try m.marshal()
         let lines = output.components(separatedBy: "\n")
         let fileIdx = lines.firstIndex { $0.contains("file.txt") }
         let dirIdx = lines.firstIndex { $0.contains("dir/") }
@@ -51,7 +51,7 @@ struct EncoderTests {
         drwxr-xr-x 2024-01-01T00:00:00Z 4096 src/ -
         """
         let m = try Manifest.unmarshal(input)
-        let output = m.marshal()
+        let output = try m.marshal()
 
         let m2 = try Manifest.unmarshal(output)
         #expect(m2.entries.count == m.entries.count)
@@ -62,7 +62,7 @@ struct EncoderTests {
     }
 
     @Test("Pretty print includes aligned columns")
-    func prettyPrint() {
+    func prettyPrint() throws {
         var m = Manifest()
         m.addEntry(Entry(
             mode: .file644,
@@ -79,7 +79,7 @@ struct EncoderTests {
             c4id: C4ID.identify(string: "b")
         ))
 
-        let output = m.marshalPretty()
+        let output = try m.marshalPretty()
         let lines = output.components(separatedBy: "\n").filter { $0.contains("c4") }
         if lines.count == 2 {
             let col1 = lines[0].range(of: "c4")?.lowerBound
@@ -90,35 +90,35 @@ struct EncoderTests {
     }
 
     @Test("Encode indented entries")
-    func encodeIndented() {
+    func encodeIndented() throws {
         var m = Manifest()
         m.addEntry(Entry(mode: .dir755, name: "dir/", depth: 0))
         m.addEntry(Entry(mode: .file644, name: "nested.txt", depth: 1))
 
         let enc = Encoder(indentWidth: 2)
-        let output = enc.encode(m)
+        let output = try enc.encode(m)
         let lines = output.components(separatedBy: "\n")
         let nestedLine = lines.first { $0.contains("nested.txt") }
         #expect(nestedLine?.hasPrefix("  ") == true)
     }
 
     @Test("Null C4 ID renders as dash")
-    func nullC4IDRendered() {
+    func nullC4IDRendered() throws {
         var m = Manifest()
         m.addEntry(Entry(mode: .file644, size: 100, name: "file.txt"))
-        let output = m.marshal()
+        let output = try m.marshal()
         // Should end with " -\n" (null C4 ID)
         #expect(output.contains(" -\n"))
     }
 
     @Test("C4 ID or dash always last field")
-    func c4idAlwaysLast() {
+    func c4idAlwaysLast() throws {
         let id = C4ID.identify(string: "content")
         var m = Manifest()
         m.addEntry(Entry(mode: .file644, size: 100, name: "with_id.txt", c4id: id))
         m.addEntry(Entry(mode: .file644, size: 100, name: "without_id.txt"))
 
-        let output = m.marshal()
+        let output = try m.marshal()
         let lines = output.components(separatedBy: "\n").filter { !$0.isEmpty }
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -129,24 +129,24 @@ struct EncoderTests {
     }
 
     @Test("Encode hard link entries")
-    func encodeHardLink() {
+    func encodeHardLink() throws {
         var m = Manifest()
         let id = C4ID.identify(string: "content")
         m.addEntry(Entry(mode: .file644, size: 100, name: "file.txt", c4id: id, hardLink: -1))
         m.addEntry(Entry(mode: .file644, size: 100, name: "link.txt", c4id: id, hardLink: 2))
 
-        let output = m.marshal()
+        let output = try m.marshal()
         #expect(output.contains("file.txt -> "))
         #expect(output.contains("link.txt ->2 "))
     }
 
     @Test("Encode flow link entries")
-    func encodeFlowLink() {
+    func encodeFlowLink() throws {
         var m = Manifest()
         m.addEntry(Entry(mode: .dir755, name: "outbox/", flowDirection: .outbound, flowTarget: "studio:inbox/"))
         m.addEntry(Entry(mode: .dir755, name: "inbox/", flowDirection: .inbound, flowTarget: "nas:renders/"))
 
-        let output = m.marshal()
+        let output = try m.marshal()
         #expect(output.contains("-> studio:inbox/"))
         #expect(output.contains("<- nas:renders/"))
     }

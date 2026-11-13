@@ -30,7 +30,7 @@ struct EncodeBaseTests {
         let m = try Manifest.unmarshal(text)
         #expect(m.base == Self.base, "decode keeps the base")
 
-        let out = m.marshal()
+        let out = try m.marshal()
         #expect(out == text, "encode must write the base first and change nothing else")
 
         let back = try Manifest.unmarshal(out)
@@ -42,20 +42,20 @@ struct EncodeBaseTests {
     @Test("Pretty encoding starts with the base line")
     func prettyKeepsBase() throws {
         let m = try Manifest.unmarshal(Self.base.string + "\n" + Self.entryLine)
-        #expect(m.marshalPretty().hasPrefix(Self.base.string + "\n"))
+        #expect(try m.marshalPretty().hasPrefix(Self.base.string + "\n"))
     }
 
     @Test("A manifest with no base encodes with no bare line")
     func noBaseNoBareLine() throws {
         var m = try Manifest.unmarshal(Self.base.string + "\n" + Self.entryLine)
         m.base = nil
-        #expect(m.marshal() == Self.entryLine)
+        #expect(try m.marshal() == Self.entryLine)
     }
 
     @Test("A base alone encodes as the base line and decodes back")
     func baseOnly() throws {
         let m = Manifest(base: Self.base)
-        let out = m.marshal()
+        let out = try m.marshal()
         #expect(out == Self.base.string + "\n")
         #expect(try Manifest.unmarshal(out).base == Self.base)
     }
