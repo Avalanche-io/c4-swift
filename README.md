@@ -265,6 +265,10 @@ let updated = applyPatch(base: original, patch: changes)
 
 Patch semantics: an entry identical to the base means removal; a new entry means addition; a different entry at the same path means modification.
 
+A chain ends on its last entry line. A bare C4 ID appears only as a first-line base reference or as a checkpoint before a patch section; a file that ends with one is a format error (ruled 2026-11-08) and decodes to `C4MError.trailingID(line)`.
+
+> ⚠ **Breaking in 1.1.** Through 1.0.x this package accepted a verified bare C4 ID at end of input as a "closing validator". It now refuses it. Files written by c4 1.0.13 through 1.0.26 with `c4 diff >>` end this way; delete the final line, or rewrite the file with `c4 id FILE.c4m > fixed.c4m` (c4 1.1). Code that switches exhaustively over `C4MError` gains a case.
+
 ### SafeName
 
 Universal Filename Encoding for safe representation of any filesystem name.

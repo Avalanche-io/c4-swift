@@ -103,20 +103,33 @@ struct DecoderTests {
         // succeed regardless. Regression for the libc4-found deferral bug:
         // applyPatch builds a fresh manifest that drops `base`, which
         // previously re-enabled verification at the second checkpoint.
-        // (Mirrors Go TestDecodeExternalBaseDefersAllCheckpoints.)
+        // The stream ends on its last patch's entries: even with an
+        // external base, a trailing bare ID is a format error (ruled
+        // 2026-11-08). (Mirrors Go TestDecodeExternalBaseDefersAllCheckpoints.)
         let baseID = C4ID.identify(string: "external base manifest")
         let bogus1 = C4ID.identify(string: "bogus checkpoint one")
         let bogus2 = C4ID.identify(string: "bogus checkpoint two")
-        let input = """
+        let endsOnID = """
         \(baseID.string)
         -rw-r--r-- 2024-01-01T00:00:00Z 100 a.txt -
         \(bogus1.string)
         -rw-r--r-- 2024-01-01T00:00:00Z 200 b.txt -
         \(bogus2.string)
         """
+        let input = endsOnID + "\n-rw-r--r-- 2024-01-01T00:00:00Z 300 c.txt -\n"
+
+        do {
+            _ = try Manifest.unmarshal(endsOnID)
+            Issue.record("an external-base chain ending with a bare ID must be refused")
+        } catch let error as C4MError {
+            guard case .trailingID(5) = error else {
+                Issue.record("expected trailingID(5), got \(error)")
+                return
+            }
+        }
 
         let m = try Manifest.unmarshal(input)
-        #expect(m.entries.count == 2)
+        #expect(m.entries.count == 3)
         #expect(m.base == baseID)
     }
 

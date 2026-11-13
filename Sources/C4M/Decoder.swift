@@ -24,12 +24,17 @@ public struct Decoder: Sendable {
     /// Entry-only format with patch boundary support:
     /// - First bare C4 ID (before entries) = external base reference
     /// - Subsequent bare C4 IDs = inline checkpoints (must match accumulated state)
+    /// - A bare C4 ID at end of input (other than a first-line base
+    ///   reference) is `C4MError.trailingID`: a c4m file never ends with
+    ///   its own ID (ruled 2026-11-08).
     public mutating func decode() throws -> Manifest {
         var manifest = Manifest()
         var section: [Entry] = []
         var firstLine = true
         var patchMode = false
         var externalBase = false
+        // Line of the last non-blank line when it was a checkpoint, else nil.
+        var trailingCheckpointLine: Int? = nil
 
         while lineIndex < lines.count {
             let line = String(lines[lineIndex])
@@ -69,8 +74,9 @@ public struct Decoder: Sendable {
                     // accumulated manifest state (all preceding entries and
                     // applied patches). Flush the pending section, then verify.
                     // Consecutive checkpoints verify the same accumulated state;
-                    // a checkpoint at EOF is the chain's closing validator
-                    // (grammar erratum 2026-07-13).
+                    // a checkpoint at end of input is a format error (see
+                    // after the loop).
+                    trailingCheckpointLine = lineIndex
                     if !patchMode {
                         manifest.entries.append(contentsOf: section)
                     } else if !section.isEmpty {
@@ -106,12 +112,23 @@ public struct Decoder: Sendable {
             let entry = try parseEntryLine(line)
             section.append(entry)
             firstLine = false
+            trailingCheckpointLine = nil
         }
 
-        // Flush remaining section. A stream may end without a closing
-        // validator (the final patch applies unverified — C4M-STANDARD
-        // §10.7); a stream whose last line was a bare C4 ID ended with its
-        // closing validator, already verified above.
+        // A bare C4 ID at end of input is a format error: a c4m file never
+        // ends with its own ID (a bare ID is a boundary before a patch, and
+        // a file cannot contain the ID that names it; ruled 2026-11-08).
+        // The checkpoint was verified above, so a wrong trailing ID is
+        // patchIDMismatch and a right one is trailingID. A file that is
+        // only a first-line base reference is not a checkpoint and decodes
+        // to an empty manifest carrying that base.
+        if let line = trailingCheckpointLine {
+            throw C4MError.trailingID(line)
+        }
+
+        // Flush remaining section: a chain ends on its last section's
+        // entries, and the final patch is verified by what it names, not
+        // by a line after it (C4M-STANDARD §10.7).
         if !patchMode {
             manifest.entries.append(contentsOf: section)
         } else if !section.isEmpty {
