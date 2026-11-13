@@ -3,174 +3,185 @@ import Foundation
 import CryptoKit
 @testable import C4M
 
-/// Byte identity over every shared vector this port vendors. Each `.c4m`
-/// file is decoded and re-encoded canonically, and the SHA-512 of the
-/// output is compared with the input's (CryptoKit's SHA-512, not the port's
-/// C4 ID code). A c4m file's byte ID is a C4 ID, so a round trip that
-/// changes a canonical file's bytes changes its ID: nothing compared bytes
-/// before, which is how such a loss could go unseen (decided 2026-11-13 by
-/// the release lead; reversible).
+/// Byte identity over every shared vector this port vendors, as each
+/// vector's README states it. Every vector README carries a "## Round trip"
+/// table (c4 #158, at 7ac7183), which c4 core's `TestVectorRoundTrip` reads and
+/// every port runs: each `.c4m` file is decoded and encoded canonically, and
+/// the SHA-512 of the bytes (CryptoKit's, not the port's C4 ID code) is
+/// checked against the row. A c4m file's byte ID is a C4 ID, so a round trip
+/// that keeps or drops bytes changes it: that is data loss (decided
+/// 2026-11-13 by the release lead; reversible).
 ///
-/// Every file is classified as c4 core's Go reference classifies it
-/// (measured 2026-11-13 on c4 7a6ba94), and a file in a vector directory
-/// that the table does not name fails, so a new vector cannot be skipped.
-/// The one place this port differs from Go is SafeNameVector/names.c4m: see
-/// `classes` below.
+/// A row's second cell is one of:
+/// - `itself`: the output is the file, byte for byte;
+/// - a backticked file: the output is that file (its canonical partner);
+/// - `ID in` a backticked file: a chain whose resolved state has that ID;
+/// - `refused`: decoding fails.
+///
+/// Any other entry fails. Every vendored `.c4m` must be named exactly once. A row naming a file this
+/// port does not vendor is passed over.
 @Suite("Vector Byte Identity")
 struct VectorByteIdentityTests {
 
-    enum Class {
-        /// The library wrote it canonically: re-encoding gives the same bytes.
-        case stable
-        /// Decodes, but is not canonical text, by design (the reason).
-        case nonCanonical(String)
-        /// Refused on decode, by design (the reason).
-        case rejected(String)
+    struct Row {
+        var file: String  // a name in the directory, or a glob such as */*.c4m
+        var want: String  // itself | `NAME` | ID in `NAME` | refused
     }
-
-    static let pretty = "pretty form (the vector's README: the same tree, written by the pretty encoder)"
-    static let zeroSpelled = "a null size spelled 0 (the vector's README: a 0 beside a C4 ID other than the empty content's is null, re-encoded as -)"
-    static let legacy = "legacy null mode: ten dashes, which a release through 1.0.21 wrote for a null mode (re-encoded as -)"
-    static let chain = "a patch chain, which decodes to its resolved state (the vector's README)"
-    static let damaged = "a damaged line (DamagedLineVector README)"
-    static let nameEscape = "a name a writer never produces (NameEscapeVector README)"
-    static let nameRule = "a path where an entry name belongs (NameRuleVector README)"
-
-    static let classes: [String: Class] = [
-        "BackslashNameVector/canonical.c4m": .stable,
-        "BackslashNameVector/patch.c4m": .stable,
-        "BackslashNameVector/pretty.c4m": .nonCanonical(pretty),
-
-        "ChainVector/vector.c4m": .nonCanonical(chain),
-        "ChainVector/bad-checkpoint.c4m": .rejected("an interior checkpoint that does not match the accumulated state (ChainVector README)"),
-        "ChainVector/bad-validator.c4m": .rejected("a bare ID at EOF that mismatches the accumulated state, and ends the file (ChainVector README)"),
-
-        "ChildlessDirVector/normalized.c4m": .stable,
-        "ChildlessDirVector/stated.c4m": .stable,
-
-        "DamagedLineVector/ok.c4m": .stable,
-        "DamagedLineVector/id-89.c4m": .rejected(damaged),
-        "DamagedLineVector/id-91.c4m": .rejected(damaged),
-        "DamagedLineVector/id-bad-char.c4m": .rejected(damaged),
-        "DamagedLineVector/mode-bad-char.c4m": .rejected(damaged),
-        "DamagedLineVector/mode-sticky-letter-misplaced.c4m": .rejected(damaged),
-        "DamagedLineVector/mode-wrong-letter.c4m": .rejected(damaged),
-        "DamagedLineVector/size-junk.c4m": .rejected(damaged),
-        "DamagedLineVector/size-null-junk.c4m": .rejected(damaged),
-        "DamagedLineVector/time-impossible.c4m": .rejected(damaged),
-
-        "DeepenVector/deepen.c4m": .nonCanonical(chain),
-        "DeepenVector/remove.c4m": .nonCanonical(chain),
-
-        "Legacy/ten-dash-null-1.0.21.c4m": .nonCanonical(legacy),
-
-        "LinkTargetVector/canonical.c4m": .stable,
-        "LinkTargetVector/patch.c4m": .stable,
-        "LinkTargetVector/pretty.c4m": .nonCanonical(pretty),
-
-        "NameEscapeVector/ok-dir.c4m": .stable,
-        "NameEscapeVector/ok-escaped.c4m": .stable,
-        "NameEscapeVector/ok-file.c4m": .stable,
-        "NameEscapeVector/ok-indent-3.c4m": .nonCanonical("written with SetIndent(3): any consistent indent unit reads, and canonical output indents by 2 (NameEscapeVector README)"),
-        "NameEscapeVector/dir-unescaped-space.c4m": .rejected(nameEscape),
-        "NameEscapeVector/file-damaged-id-field.c4m": .rejected(nameEscape),
-        "NameEscapeVector/file-raw-control.c4m": .rejected(nameEscape),
-        "NameEscapeVector/file-raw-quote.c4m": .rejected(nameEscape),
-        "NameEscapeVector/file-raw-tab.c4m": .rejected(nameEscape),
-        "NameEscapeVector/file-unescaped-space.c4m": .rejected(nameEscape),
-
-        "NameRuleVector/ok-dir.c4m": .stable,
-        "NameRuleVector/ok-file.c4m": .stable,
-        "NameRuleVector/dir-dot.c4m": .rejected(nameRule),
-        "NameRuleVector/dir-dotdot.c4m": .rejected(nameRule),
-        "NameRuleVector/dir-double-slash.c4m": .rejected(nameRule),
-        "NameRuleVector/dir-nested.c4m": .rejected(nameRule),
-        "NameRuleVector/dir-root.c4m": .rejected(nameRule),
-        "NameRuleVector/file-dot.c4m": .rejected(nameRule),
-        "NameRuleVector/file-dotdot-inside.c4m": .rejected(nameRule),
-        "NameRuleVector/file-dotdot.c4m": .rejected(nameRule),
-        "NameRuleVector/file-leading-slash.c4m": .rejected(nameRule),
-        "NameRuleVector/file-sub.c4m": .rejected(nameRule),
-        "NameRuleVector/file-trailing-path.c4m": .rejected(nameRule),
-
-        "NullSizeVector/canonical.c4m": .stable,
-        "NullSizeVector/zero-spelled.c4m": .nonCanonical(zeroSpelled),
-
-        // Go round-trips this file byte for byte; this port refuses it. Its
-        // README, decided 2026-11-13 by the release lead (reversible): names
-        // that are not valid UTF-8 "are refused, naming the line, by
-        // implementations whose string type cannot hold them (c4ts,
-        // c4m-swift), for 1.x". `safeNameRest` checks every other line.
-        "SafeNameVector/names.c4m": .rejected("four names are not valid UTF-8, which a Swift String cannot hold (SafeNameVector README, decided 2026-11-13)"),
-
-        "SequenceNullSizeVector/folded.c4m": .stable,
-        "SequenceNullSizeVector/frames.c4m": .stable,
-        "SequenceNullSizeVector/frames-zero-spelled.c4m": .nonCanonical(zeroSpelled),
-
-        "UnicodeNameVector/canonical.c4m": .stable,
-        "UnicodeNameVector/nfc-nfd-chain.c4m": .nonCanonical(chain),
-        "UnicodeNameVector/pretty.c4m": .nonCanonical(pretty),
-
-        "ZeroNullVector/canonical.c4m": .stable,
-        "ZeroNullVector/pretty.c4m": .nonCanonical(pretty),
-    ]
 
     private static var root: URL { Bundle.module.resourceURL! }
 
-    private static func bytes(_ path: String) throws -> Data {
-        try Data(contentsOf: root.appendingPathComponent(path))
-    }
-
-    private static func roundTrip(_ data: Data) throws -> Data {
-        Data(try Manifest.unmarshal(data).marshal().utf8)
-    }
-
-    @Test("every vector file is classified, and every classified file exists")
-    func everyFileClassified() throws {
+    /// The vendored vector directories: every resource directory with a README.
+    static func vectorDirs() throws -> [String] {
         let fm = FileManager.default
-        var found: Set<String> = []
-        for dir in try fm.contentsOfDirectory(atPath: Self.root.path) {
-            var isDir: ObjCBool = false
-            let url = Self.root.appendingPathComponent(dir)
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { continue }
-            for f in try fm.contentsOfDirectory(atPath: url.path) where f.hasSuffix(".c4m") {
-                found.insert("\(dir)/\(f)")
-            }
-        }
-        #expect(found.subtracting(Self.classes.keys).sorted() == [], "unclassified vector files")
-        #expect(Set(Self.classes.keys).subtracting(found).sorted() == [], "classified files missing")
+        return try fm.contentsOfDirectory(atPath: root.path).filter {
+            fm.fileExists(atPath: root.appendingPathComponent($0).appendingPathComponent("README.md").path)
+        }.sorted()
     }
 
-    @Test("decode and canonical re-encode, compared by SHA-512", arguments: classes.keys.sorted())
-    func byteIdentity(path: String) throws {
-        let input = try Self.bytes(path)
-        switch Self.classes[path]! {
-        case .stable:
-            let output = try Self.roundTrip(input)
-            #expect(SHA512.hash(data: output) == SHA512.hash(data: input), "\(path) re-encodes to different bytes")
-        case .nonCanonical(let why):
-            // Not canonical, so the bytes differ; the canonical text it
-            // decodes to is itself byte-stable.
-            let output = try Self.roundTrip(input)
-            #expect(SHA512.hash(data: output) != SHA512.hash(data: input), "\(path) is now canonical; reclassify it (was: \(why))")
-            #expect(SHA512.hash(data: try Self.roundTrip(output)) == SHA512.hash(data: output), "\(path): its canonical form is not stable")
-        case .rejected(let why):
-            #expect(throws: (any Error).self, "\(path) decoded (expected refusal: \(why))") {
-                _ = try Manifest.unmarshal(input)
+    /// The `.c4m` files under a directory, relative to it.
+    static func c4mFiles(_ dir: String) -> [String] {
+        let base = root.appendingPathComponent(dir)
+        let walk = FileManager.default.enumerator(atPath: base.path)
+        var out: [String] = []
+        while let p = walk?.nextObject() as? String {
+            if p.hasSuffix(".c4m") { out.append(p) }
+        }
+        return out.sorted()
+    }
+
+    /// The rows of the README's "## Round trip" table. The first cell's
+    /// backticks are removed; the second keeps its own.
+    static func rows(_ dir: String) throws -> [Row] {
+        let text = try String(contentsOf: root.appendingPathComponent(dir).appendingPathComponent("README.md"), encoding: .utf8)
+        var rows: [Row] = []
+        var inTable = false, header = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            if line.hasPrefix("## ") {
+                inTable = line == "## Round trip"
+                continue
+            }
+            guard inTable, line.hasPrefix("|") else { continue }
+            if header < 2 { header += 1; continue }  // the header row and its separator
+            let cells = line.trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                .split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard cells.count == 2 else {
+                Issue.record("\(dir)/README.md: a Round trip row needs two cells: \(line)")
+                continue
+            }
+            rows.append(Row(file: cells[0].trimmingCharacters(in: CharacterSet(charactersIn: "`")), want: cells[1]))
+        }
+        return rows
+    }
+
+    /// The name inside the outermost backticks of s.
+    static func quoted(_ s: String) -> String {
+        guard let i = s.firstIndex(of: "`"), let j = s.lastIndex(of: "`"), i < j else { return "" }
+        return String(s[s.index(after: i)..<j])
+    }
+
+    static func matches(_ pattern: String, _ path: String) -> Bool {
+        fnmatch(pattern, path, FNM_PATHNAME) == 0
+    }
+
+    @Test("every vendored .c4m is named exactly once in its README's Round trip table",
+          arguments: try vectorDirs())
+    func coverage(dir: String) throws {
+        let files = Self.c4mFiles(dir)
+        let rows = try Self.rows(dir)
+        if files.isEmpty {
+            #expect(rows.isEmpty, "\(dir): a Round trip table, but no .c4m files")
+            return
+        }
+        #expect(!rows.isEmpty, "\(dir): \(files.count) .c4m files and no Round trip table")
+        for f in files {
+            let n = rows.filter { Self.matches($0.file, f) }.count
+            #expect(n == 1, "\(dir)/\(f): named \(n) times in its README's Round trip table, want once")
+        }
+    }
+
+    @Test("decode and canonical re-encode, checked against the README's Round trip table by SHA-512",
+          arguments: try vectorDirs())
+    func roundTrip(dir: String) throws {
+        let files = Self.c4mFiles(dir)
+        for row in try Self.rows(dir) {
+            for f in files where Self.matches(row.file, f) {
+                try Self.check(dir: dir, file: f, want: row.want)
             }
         }
     }
 
-    /// SafeNameVector/names.c4m less its four names that are not UTF-8 (the
-    /// file is flat, one entry per line) still round-trips byte for byte, so
-    /// the refusal above hides no fault in the other 27 names.
-    @Test("SafeNameVector/names.c4m less its invalid-UTF-8 names round-trips byte for byte")
-    func safeNameRest() throws {
-        let text = String(decoding: try Self.bytes("SafeNameVector/names.c4m"), as: UTF8.self)
-        let invalid = ["invalid-ff", "lone-continuation", "overlong-nul", "surrogate"]
-        let lines = text.split(separator: "\n").filter { l in !invalid.contains { l.contains(" \($0)-") } }
-        #expect(lines.count == 27)
-        let rest = Data((lines.joined(separator: "\n") + "\n").utf8)
-        #expect(SHA512.hash(data: try Self.roundTrip(rest)) == SHA512.hash(data: rest))
+    static func read(_ dir: String, _ file: String) throws -> Data {
+        try Data(contentsOf: root.appendingPathComponent(dir).appendingPathComponent(file))
+    }
+
+    static func check(dir: String, file: String, want: String) throws {
+        let path = "\(dir)/\(file)"
+        let input = try read(dir, file)
+        let decoded = Result { try Manifest.unmarshal(input) }
+        if want == "refused" {
+            if case .success = decoded { Issue.record("\(path): decoded, but its README says it is refused") }
+            return
+        }
+        let m: Manifest
+        switch decoded {
+        case .success(let v): m = v
+        case .failure(let e):
+            if want == "itself", try utf8Exempt(dir: dir, error: e) {
+                try checkUTF8Rest(path: path, input: input)
+                return
+            }
+            Issue.record("\(path): \(e)")
+            return
+        }
+        let output = Data(try m.marshal().utf8)
+        if want == "itself" {
+            #expect(SHA512.hash(data: output) == SHA512.hash(data: input), "\(path) does not re-encode to itself")
+        } else if want.hasPrefix("ID in ") {
+            let id = String(decoding: try read(dir, quoted(want)), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            #expect(m.computeC4ID().string == id, "\(path) resolves to \(m.computeC4ID().string), want \(id) (\(quoted(want)))")
+        } else if !quoted(want).isEmpty && quoted(want) == want.trimmingCharacters(in: CharacterSet(charactersIn: "`")) {
+            let partner = try read(dir, quoted(want))
+            #expect(SHA512.hash(data: output) == SHA512.hash(data: partner), "\(path) does not re-encode to \(quoted(want))")
+        } else {
+            Issue.record("\(path): unknown Round trip entry \(want)")
+        }
+    }
+
+    /// The one place the table's Go round trip does not bind this port, and
+    /// only while the vector's own README says so. SafeNameVector's README,
+    /// decided 2026-11-13 by the release lead (reversible): "Names that are
+    /// not valid UTF-8 are refused, naming the line, by implementations whose
+    /// string type cannot hold them (c4ts, c4m-swift), for 1.x." A Swift
+    /// String cannot hold them, so such a file is refused at that line.
+    static let utf8Exemption = "refused, naming the line, by implementations whose string type cannot hold them (c4ts, c4m-swift)"
+
+    static func utf8Exempt(dir: String, error: Error) throws -> Bool {
+        let readme = try String(contentsOf: root.appendingPathComponent(dir).appendingPathComponent("README.md"), encoding: .utf8)
+        let flat = readme.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard flat.contains(utf8Exemption), case C4MError.invalidEntry(_, let why) = error else { return false }
+        return why.contains("not UTF-8")
+    }
+
+    /// An exempt file still owes byte identity on every line it can hold:
+    /// less the lines refused alone (each one must be refused for not being
+    /// UTF-8), the rest of a flat file re-encodes to itself byte for byte.
+    static func checkUTF8Rest(path: String, input: Data) throws {
+        let lines = String(decoding: input, as: UTF8.self).split(separator: "\n")
+        #expect(!lines.contains { $0.hasPrefix(" ") }, "\(path): the exemption applies only to a flat file")
+        var kept: [Substring] = []
+        var refused = 0
+        for l in lines {
+            do {
+                _ = try Manifest.unmarshal(String(l) + "\n")
+                kept.append(l)
+            } catch C4MError.invalidEntry(_, let why) where why.contains("not UTF-8") {
+                refused += 1
+            }
+        }
+        #expect(refused > 0, "\(path): refused, but no single line is refused for not being UTF-8")
+        let rest = Data((kept.joined(separator: "\n") + "\n").utf8)
+        let output = Data(try Manifest.unmarshal(rest).marshal().utf8)
+        #expect(SHA512.hash(data: output) == SHA512.hash(data: rest), "\(path), less its \(refused) names that are not UTF-8, does not re-encode to itself")
     }
 }
