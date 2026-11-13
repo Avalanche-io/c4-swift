@@ -5,37 +5,11 @@ import Foundation
 /// with Tier 2 backslash escapes for common control chars and Tier 3 braille
 /// encoding for all other non-printable bytes.
 public func safeName(_ raw: String) -> String {
-    // Fast path: check if encoding is needed.
-    var needsEncoding = false
-    for scalar in raw.unicodeScalars {
-        if scalar == "\u{00A4}" || scalar == "\\" {
-            needsEncoding = true
-            break
-        }
-        // Check for non-printable (control chars, surrogates, etc.)
-        if !isPrintableScalar(scalar) {
-            needsEncoding = true
-            break
-        }
-    }
-    // Also check for invalid UTF-8 by looking at raw bytes
-    let bytes = Array(raw.utf8)
-    if !needsEncoding {
-        // Verify all bytes decode as valid UTF-8 printable chars
-        var i = 0
-        while i < bytes.count {
-            let b = bytes[i]
-            if b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D {
-                // Non-printable ASCII control char
-                needsEncoding = true
-                break
-            }
-            if b == 0x7F {
-                needsEncoding = true
-                break
-            }
-            i += 1
-        }
+    // Fast path: no scalar needs encoding. A Swift String is always valid
+    // UTF-8, and every ASCII control byte is a scalar the table calls
+    // unprintable, so this one pass covers every byte.
+    let needsEncoding = raw.unicodeScalars.contains {
+        $0 == "\u{00A4}" || $0 == "\\" || !isPrintableScalar($0)
     }
     if !needsEncoding {
         return raw
@@ -173,15 +147,30 @@ func unsafeNameExact(_ encoded: String) -> String? {
 
 // MARK: - Internal Helpers
 
-/// Check if a Unicode scalar is printable (not a control character).
-private func isPrintableScalar(_ scalar: Unicode.Scalar) -> Bool {
-    // Control characters: 0x00-0x1F and 0x7F-0x9F
-    if scalar.value < 0x20 { return false }
-    if scalar.value == 0x7F { return false }
-    if scalar.value >= 0x80 && scalar.value <= 0x9F { return false }
-    // Unicode "Other" categories that are non-printable
-    // We consider most assigned scalars as printable
-    return true
+/// Whether SafeName writes a scalar as itself (Tier 1): Go's unicode.IsPrint
+/// pinned to one Unicode version (`printableRanges`, generated from the
+/// shared printable-<version>.txt by Scripts/gen_printable.swift), never the
+/// runtime's Unicode tables, so a name's encoding, and so its C4 ID, is the
+/// same on every runtime (decided 2026-11-13 by the release lead;
+/// reversible). Through 2026-11-13 this passed every scalar except the C0
+/// and C1 controls, so 13 names in the shared SafeName vector (non-ASCII
+/// spaces, format characters, private use, unassigned, noncharacters) were
+/// written raw where Go encodes them.
+func isPrintableScalar(_ scalar: Unicode.Scalar) -> Bool {
+    let v = scalar.value
+    var lo = 0
+    var hi = printableRanges.count
+    while lo < hi {
+        let mid = (lo + hi) / 2
+        if v < printableRanges[mid].0 {
+            hi = mid
+        } else if v > printableRanges[mid].1 {
+            lo = mid + 1
+        } else {
+            return true
+        }
+    }
+    return false
 }
 
 /// Return the Tier 2 escape character for a Unicode scalar, or nil.
