@@ -63,6 +63,26 @@ struct SafeNameVectorTests {
         }
     }
 
-    @Test("held: every name is written as Go writes it", .disabled("held: which code points Tier 1 passes (Go's unicode.IsPrint, and at which Unicode version) is with Joshua; c4m-swift writes 13 non-printables raw today"))
-    func writerMatchesGo() {}
+    /// Tier 1 is unicode.IsPrint at Unicode 17.0.0, pinned (c4 #149; decided
+    /// 2026-11-13 by the release lead; reversible). Through 2026-11-13
+    /// c4m-swift wrote 13 of these names raw where Go encodes them.
+    @Test("every name Swift can hold is written as Go writes it")
+    func writerMatchesGo() throws {
+        var checked = 0
+        for c in try Self.fixture("cases", "txt").split(separator: "\n") {
+            let parts = c.split(separator: " ", maxSplits: 2).map(String.init)
+            if Self.invalid.contains(parts[0]) { continue }
+            var raw: [UInt8] = []
+            var i = parts[1].startIndex
+            while i < parts[1].endIndex {
+                let j = parts[1].index(i, offsetBy: 2)
+                raw.append(UInt8(parts[1][i..<j], radix: 16)!)
+                i = j
+            }
+            let name = try #require(String(bytes: raw, encoding: .utf8), "\(parts[0])")
+            #expect(Entry.formatName(name) == parts[2], "\(parts[0])")
+            checked += 1
+        }
+        #expect(checked == 27)
+    }
 }
