@@ -5,7 +5,7 @@ import CryptoKit
 
 /// Byte identity over every shared vector this port vendors, as each
 /// vector's README states it. Every vector README carries a "## Round trip"
-/// table (c4 #158, at 9c42890), which c4 core's `TestVectorRoundTrip` reads and
+/// table (c4 #158, at 7cdc9f3), which c4 core's `TestVectorRoundTrip` reads and
 /// every port runs: each `.c4m` file is decoded and encoded canonically, and
 /// the SHA-512 of the bytes (CryptoKit's, not the port's C4 ID code) is
 /// checked against the row. A c4m file's byte ID is a C4 ID, so a round trip
@@ -167,7 +167,7 @@ struct VectorByteIdentityTests {
     /// still owes byte identity on every line it can hold: less the lines
     /// refused alone (each one must be refused for not being UTF-8), the rest
     /// of a flat file re-encodes to itself byte for byte. The README says the
-    /// same of c4ts and c4m-swift (c4 #158, 9c42890).
+    /// same of c4ts and c4m-swift (c4 #158, 7cdc9f3).
     static func checkUTF8Rest(path: String, input: Data, refusedAt: Int) throws {
         let lines = String(decoding: input, as: UTF8.self).split(separator: "\n")
         #expect(!lines.contains { $0.hasPrefix(" ") }, "\(path): the exemption applies only to a flat file")
