@@ -142,6 +142,33 @@ struct SequenceTests {
         #expect(seqEntry?.pattern == "frame.[0001-0010].exr")
     }
 
+    /// A folded sequence's size is the sum of its frames' sizes, and a frame
+    /// whose size is unknown makes the total unknown, as a null child does a
+    /// directory's size. Through 2026-11-13 the frame's -1 was added in: four
+    /// 6-byte frames with one unknown folded to size 17, a known and wrong
+    /// value (c4 #155; decided 2026-11-13 by the release lead; reversible).
+    @Test("A folded sequence's size is null when a frame's size is null", arguments: [0, 3])
+    func sequenceSizeNull(nullFrame: Int) throws {
+        let ts = Date(timeIntervalSince1970: 1_767_225_600) // 2026-01-01T00:00:00Z
+        var m = Manifest()
+        for i in 1 ... 4 {
+            let body = "frame\(i)"
+            m.addEntry(Entry(
+                mode: .file644,
+                timestamp: ts,
+                size: i == nullFrame ? -1 : Int64(body.utf8.count),
+                name: "shot.\(1000 + i).exr",
+                c4id: C4ID.identify(string: body)
+            ))
+        }
+        let seq = try #require(detectSequences(in: m, minLength: 3).entries.first { $0.isSequence })
+        if nullFrame == 0 {
+            #expect(seq.size == 24 && !seq.sizeIsNull)
+        } else {
+            #expect(seq.sizeIsNull, "size \(seq.size), want null")
+        }
+    }
+
     @Test("Detect sequences respects minLength")
     func detectMinLength() {
         var manifest = Manifest()

@@ -219,12 +219,23 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
                 let pattern = "\(group.prefix)[\(String(format: "%0\(group.padding)d", r.start))-\(String(format: "%0\(group.padding)d", r.end))]\(group.suffix)"
 
                 var totalSize: Int64 = 0
+                var nullSize = false
                 var latestTime = Date.distantPast
                 for idx in indicesInRange {
                     let entry = manifest.entries[idx]
-                    totalSize += entry.size
+                    // A frame whose size is unknown makes the total unknown,
+                    // as a null child does a directory's size. Through
+                    // 2026-11-13 its -1 was added in, so the range claimed a
+                    // known, wrong size (c4 #155; decided 2026-11-13 by the
+                    // release lead; reversible).
+                    if entry.sizeIsNull {
+                        nullSize = true
+                    } else {
+                        totalSize += entry.size
+                    }
                     if entry.timestamp > latestTime { latestTime = entry.timestamp }
                 }
+                if nullSize { totalSize = -1 }
 
                 let firstEntry = manifest.entries[indicesInRange.min()!]
                 let seqEntry = Entry(
