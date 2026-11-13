@@ -16,7 +16,8 @@ public struct Encoder: Sendable {
     }
 
     /// Encode a manifest to its C4M text representation.
-    /// Entry-only: no header, no directives.
+    /// Entry-only: no header, no directives. A set `base` is written first,
+    /// as a bare C4 ID line; a manifest with no base has no bare line.
     public func encode(_ manifest: Manifest) -> String {
         var m = manifest
         m.sortEntries()
@@ -32,6 +33,16 @@ public struct Encoder: Sendable {
         }
 
         var buf = ""
+
+        // A first-line bare ID is the external base this description refines
+        // (SPECIFICATION.md, external base reference). The decoder keeps it
+        // in `base`; writing it back keeps the round trip honest. Through
+        // 2026-11-13 it was dropped, so encoding a decoded block turned it
+        // into a standalone description of its own entries (c4 #145).
+        if let base = m.base, !base.isNil {
+            buf += base.string
+            buf += "\n"
+        }
 
         // Write entries
         for entry in m.entries {
