@@ -5,7 +5,7 @@ import CryptoKit
 
 /// Byte identity over every shared vector this port vendors, as each
 /// vector's README states it. Every vector README carries a "## Round trip"
-/// table (c4 #158, at 7ac7183), which c4 core's `TestVectorRoundTrip` reads and
+/// table (c4 #158, at 9c42890), which c4 core's `TestVectorRoundTrip` reads and
 /// every port runs: each `.c4m` file is decoded and encoded canonically, and
 /// the SHA-512 of the bytes (CryptoKit's, not the port's C4 ID code) is
 /// checked against the row. A c4m file's byte ID is a C4 ID, so a round trip
@@ -127,8 +127,8 @@ struct VectorByteIdentityTests {
         switch decoded {
         case .success(let v): m = v
         case .failure(let e):
-            if want == "itself", try utf8Exempt(dir: dir, error: e) {
-                try checkUTF8Rest(path: path, input: input)
+            if want == "itself", try utf8Exempt(dir: dir, error: e), case C4MError.invalidEntry(let line, _) = e {
+                try checkUTF8Rest(path: path, input: input, refusedAt: line)
                 return
             }
             Issue.record("\(path): \(e)")
@@ -163,23 +163,28 @@ struct VectorByteIdentityTests {
         return why.contains("not UTF-8")
     }
 
-    /// An exempt file still owes byte identity on every line it can hold:
-    /// less the lines refused alone (each one must be refused for not being
-    /// UTF-8), the rest of a flat file re-encodes to itself byte for byte.
-    static func checkUTF8Rest(path: String, input: Data) throws {
+    /// An exempt file is refused at its first name that is not UTF-8, and
+    /// still owes byte identity on every line it can hold: less the lines
+    /// refused alone (each one must be refused for not being UTF-8), the rest
+    /// of a flat file re-encodes to itself byte for byte. The README says the
+    /// same of c4ts and c4m-swift (c4 #158, 9c42890).
+    static func checkUTF8Rest(path: String, input: Data, refusedAt: Int) throws {
         let lines = String(decoding: input, as: UTF8.self).split(separator: "\n")
         #expect(!lines.contains { $0.hasPrefix(" ") }, "\(path): the exemption applies only to a flat file")
         var kept: [Substring] = []
         var refused = 0
-        for l in lines {
+        var first = 0
+        for (i, l) in lines.enumerated() {
             do {
                 _ = try Manifest.unmarshal(String(l) + "\n")
                 kept.append(l)
             } catch C4MError.invalidEntry(_, let why) where why.contains("not UTF-8") {
                 refused += 1
+                if first == 0 { first = i + 1 }
             }
         }
         #expect(refused > 0, "\(path): refused, but no single line is refused for not being UTF-8")
+        #expect(refusedAt == first, "\(path): refused at line \(refusedAt), want its first name that is not UTF-8, line \(first)")
         let rest = Data((kept.joined(separator: "\n") + "\n").utf8)
         let output = Data(try Manifest.unmarshal(rest).marshal().utf8)
         #expect(SHA512.hash(data: output) == SHA512.hash(data: rest), "\(path), less its \(refused) names that are not UTF-8, does not re-encode to itself")
