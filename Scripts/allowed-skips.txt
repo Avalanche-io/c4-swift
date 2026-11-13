@@ -1,0 +1,6 @@
+# Tests allowed to skip, by OS (macos, linux, windows, or "*" for any) and
+# swift-testing test ID (without the source location it appends), each with
+# why. A skip not listed here fails CI (Scripts/skips.swift). A line naming a
+# suite allows every test in it. A shared-vector (conformance) test may be
+# listed only for an OS where its condition genuinely holds: never a
+# .disabled trait, and no symlink or Unicode-version skip on macOS or Linux.
