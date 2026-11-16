@@ -172,7 +172,7 @@ struct SequenceTests {
         #expect(result.rangeData.isEmpty)
     }
 
-    /// A folded sequence's size is the sum of its frames' sizes, and a frame
+    /// A folded sequence's size is its frames' sizes plus its ID list, and a frame
     /// whose size is unknown makes the total unknown, as a null child does a
     /// directory's size. Through 2026-11-13 the frame's -1 was added in: four
     /// 6-byte frames with one unknown folded to size 17, a known and wrong
@@ -193,7 +193,8 @@ struct SequenceTests {
         }
         let seq = try #require(detectSequences(in: m, minLength: 3).entries.first { $0.isSequence })
         if nullFrame == 0 {
-            #expect(seq.size == 24 && seq.size >= 0)
+            // 24 bytes of frames and a 4 × 90-byte ID list (c4 #161)
+            #expect(seq.size == 24 + 4 * 90 && seq.size >= 0)
         } else {
             #expect(seq.size < 0, "size \(seq.size), want null")
         }

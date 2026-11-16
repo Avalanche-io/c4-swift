@@ -250,7 +250,18 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
                     if entry.timestamp > latestTime { latestTime = entry.timestamp }
                 }
                 if hasNilID { continue }
-                if nullSize { totalSize = -1 }
+                // A range's size is the size of every frame and of its ID
+                // list, the bare concatenation of member C4 IDs (90 bytes
+                // each, no separator), as a directory's size counts its
+                // listing (c4 #161; ruled 2026-11-13 by the maintainer: "The
+                // size is the size of every frame and the frame id list.").
+                // The frames' total is the size less count × 90. A null
+                // frame size still makes the whole size null.
+                if nullSize {
+                    totalSize = -1
+                } else {
+                    totalSize += Int64(idList.utf8.count)
+                }
                 let seqID = C4ID.identify(string: idList)
                 rangeData[seqID] = idList
 
@@ -275,6 +286,8 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
     }
 
     // Second pass: emit entries in original order, replacing sequences in-place.
+    // Entry is a value type, so every entry passed through is a copy: the
+    // result shares nothing with the input (c4 #162 needs no port here).
     var result = Manifest(version: manifest.version, rangeData: rangeData)
     for (idx, entry) in manifest.entries.enumerated() {
         if let seqEntry = insertAt[idx] {
@@ -283,7 +296,6 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
         if skipIndices.contains(idx) { continue }
         result.addEntry(entry)
     }
-
     return result
 }
 
