@@ -311,8 +311,8 @@ let stepped = try Sequence.parse("render.[0001-0100:2].exr")  // every other fra
 
 // Detect sequences in a manifest (collapse numbered runs into sequence entries).
 // A range's C4 ID is the ID of its frames' IDs, carried in collapsed.rangeData;
-// frames without a C4 ID are not folded, and a null frame size makes the
-// range's size null.
+// frames without a C4 ID are not folded. A range's size is its frames' sizes
+// plus its ID list (count × 90 bytes), and a null frame size makes it null.
 let collapsed = detectSequences(in: manifest, minLength: 3)
 
 // Utility functions
