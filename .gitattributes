@@ -9,3 +9,6 @@ Tests/C4MTests/NameRuleVector/* -text
 Tests/C4MTests/NameEscapeVector/* -text
 Tests/C4MTests/SafeNameVector/* -text
 Tests/C4MTests/ChildlessDirVector/* -text
+Tests/C4MTests/SequenceNullSizeVector/* -text
+Tests/C4MTests/SequenceSizeVector/* -text
+Tests/C4MTests/RangeDataVector/* -text
