@@ -293,6 +293,10 @@ public func detectSequences(in manifest: Manifest, minLength: Int = 3) -> Manife
         if skipIndices.contains(idx) { continue }
         result.addEntry(entry)
     }
+    // The lists of the ranges this fold made, and of the ranges the input
+    // already held, which pass through unchanged (c4 #159). Through
+    // 2026-11-16 an already-folded range lost its list here.
+    result.rangeData = C4M.rangeData(for: result.entries, from: [rangeData, manifest.rangeData])
     return result
 }
 

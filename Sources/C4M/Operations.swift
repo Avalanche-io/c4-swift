@@ -57,6 +57,13 @@ public func diff(lhs: Manifest, rhs: Manifest) -> DiffResult {
     result.modified.sortEntries()
     result.same.sortEntries()
 
+    // Each part carries the list of every range it holds (c4 #159).
+    let lists = [rhs.rangeData, lhs.rangeData]
+    result.added.rangeData = rangeData(for: result.added.entries, from: lists)
+    result.removed.rangeData = rangeData(for: result.removed.entries, from: lists)
+    result.modified.rangeData = rangeData(for: result.modified.entries, from: lists)
+    result.same.rangeData = rangeData(for: result.same.entries, from: lists)
+
     return result
 }
 
@@ -69,7 +76,7 @@ public func union(_ manifests: Manifest...) -> Manifest {
             seen[path] = entry
         }
     }
-    return manifestFromPaths(seen)
+    return manifestFromPaths(seen, lists: manifests.map(\.rangeData))
 }
 
 /// Return only entries whose paths exist in all manifests.
@@ -84,7 +91,7 @@ public func intersect(_ manifests: Manifest...) -> Manifest {
             common.removeValue(forKey: key)
         }
     }
-    return manifestFromPaths(common)
+    return manifestFromPaths(common, lists: manifests.map(\.rangeData))
 }
 
 /// Remove entries in `remove` from `from`.
@@ -95,12 +102,12 @@ public func subtract(_ remove: Manifest, from base: Manifest) -> Manifest {
     for key in removePaths.keys {
         kept.removeValue(forKey: key)
     }
-    return manifestFromPaths(kept)
+    return manifestFromPaths(kept, lists: [base.rangeData])
 }
 
 /// A manifest of the entries at these full paths, each named and placed by
-/// its path.
-private func manifestFromPaths(_ paths: [ByteKey: Entry]) -> Manifest {
+/// its path, carrying the ID list, from lists, of every range it holds.
+private func manifestFromPaths(_ paths: [ByteKey: Entry], lists: [[C4ID: String]]) -> Manifest {
     var result = Manifest()
     for p in paths.keys.sorted() {
         var entry = paths[p]!
@@ -109,7 +116,36 @@ private func manifestFromPaths(_ paths: [ByteKey: Entry]) -> Manifest {
         result.addEntry(entry)
     }
     result.sortEntries()
+    result.rangeData = rangeData(for: result.entries, from: lists)
     return result
+}
+
+// MARK: - Range Data
+
+/// The ID lists, taken from lists, of the folded ranges among entries: one
+/// per range whose list some input carries, and nothing else. A list no
+/// input carries stays absent; none is invented. Lists are keyed by their
+/// own C4 ID, so the same key in two inputs is the same list.
+///
+/// Every operation that writes a manifest from manifests sets its output's
+/// range data with this, so the output carries the list of every range it
+/// holds and no list for a range it does not, as it carries a
+/// subdirectory's entries (c4 #159; ruled 2026-11-13 by the maintainer: "it
+/// is an error to drop the frame IDs in any context"). Through 2026-11-16 diff,
+/// union, intersect, subtract and merge dropped every list, and applyPatch
+/// kept the list of a range the patch removed (shared range-data vector).
+func rangeData(for entries: [Entry], from lists: [[C4ID: String]]) -> [C4ID: String] {
+    var out: [C4ID: String] = [:]
+    for e in entries where e.isSequence {
+        guard let id = e.c4id, !id.isNil else { continue }
+        for l in lists {
+            if let list = l[id] {
+                out[id] = list
+                break
+            }
+        }
+    }
+    return out
 }
 
 // MARK: - Three-Way Merge
@@ -211,7 +247,7 @@ public func merge(base: Manifest, local: Manifest, remote: Manifest) -> MergeRes
     }
 
     // Rebuild manifest from paths
-    return MergeResult(merged: manifestFromPaths(merged), conflicts: conflicts)
+    return MergeResult(merged: manifestFromPaths(merged, lists: [local.rangeData, remote.rangeData, base.rangeData]), conflicts: conflicts)
 }
 
 // MARK: - Patch Application
@@ -275,19 +311,9 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
         }
     }
 
-    var result = Manifest()
-    // Merge range data
-    for (k, v) in base.rangeData { result.rangeData[k] = v }
-    for (k, v) in patch.rangeData { result.rangeData[k] = v }
-
-    for p in resultMap.keys.sorted() {
-        var entry = resultMap[p]!
-        entry.name = pathEntryName(p.string)
-        entry.depth = pathToDepth(p.string)
-        result.addEntry(entry)
-    }
-    result.sortEntries()
-    return result
+    // The result carries the list of every range it holds, from the patch
+    // or the base; a range the patch removed takes its list with it.
+    return manifestFromPaths(resultMap, lists: [patch.rangeData, base.rangeData])
 }
 
 // MARK: - Internal Helpers
