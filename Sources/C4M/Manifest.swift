@@ -347,7 +347,7 @@ public struct Manifest: Sendable, Codable {
             }
 
             // Propagate timestamp (nil-infectious)
-            if entries[i].timestamp == Entry.nullTimestamp {
+            if Entry.timestampIsNull(entries[i].timestamp) {
                 entries[i].timestamp = getMostRecentModtime(childIndices)
             }
         }
@@ -386,7 +386,7 @@ public struct Manifest: Sendable, Codable {
     private func getMostRecentModtime(_ indices: [Int]) -> Date {
         var mostRecent = Date.distantPast
         for idx in indices {
-            if entries[idx].timestamp == Entry.nullTimestamp {
+            if Entry.timestampIsNull(entries[idx].timestamp) {
                 return Entry.nullTimestamp
             }
             if entries[idx].timestamp > mostRecent {
