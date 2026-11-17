@@ -243,7 +243,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// falls in is the epoch. A c4m line carries the second a time falls in,
     /// and the epoch is null (SPECIFICATION.md, "Timestamp": "-" or "0"), so
     /// a time inside the epoch second, such as 0.5 s, is null and its line
-    /// is "-". Through 1.0.27 every null test compared the unfloored Date
+    /// is "-". Through 1.0.26 every null test compared the unfloored Date
     /// with the epoch, so an entry built with such a time was written
     /// 1970-01-01T00:00:00Z, which reads back as null, and a manifest's C4
     /// ID differed from the ID of its own text (core's epoch-second vector,
