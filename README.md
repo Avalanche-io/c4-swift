@@ -2,7 +2,7 @@
 
 [![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 [![Swift 6.0+](https://img.shields.io/badge/swift-6.0+-F05138.svg)](https://swift.org)
-[![Tests](https://img.shields.io/badge/tests-244-brightgreen.svg)](./Tests)
+[![CI](https://github.com/Avalanche-io/c4-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/Avalanche-io/c4-swift/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20|%20iOS%20|%20tvOS%20|%20watchOS%20|%20visionOS-lightgrey.svg)](#compatibility)
 
 Swift-native [C4](https://github.com/Avalanche-io/c4) content identification for Apple platforms. Zero dependencies. `Sendable` throughout. Built on CryptoKit.
@@ -401,7 +401,6 @@ Cross-language test vectors ensure c4-swift produces byte-identical output to th
 - Patch chain application
 - SafeName encoding/decoding
 
-244 tests across 28 test suites, all passing (one skipped).
 
 **Requirements**: Swift 6.0+, macOS 15+, iOS 18+, tvOS 18+, watchOS 11+, visionOS 2+
 
