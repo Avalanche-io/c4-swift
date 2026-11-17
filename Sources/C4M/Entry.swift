@@ -100,7 +100,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
 
     /// True if any metadata field holds a null sentinel.
     public var hasNullValues: Bool {
-        let nullTimestamp = timestamp == Entry.nullTimestamp
+        let nullTimestamp = Entry.timestampIsNull(timestamp)
         let nullSize = size < 0
         return mode.isNull || nullTimestamp || nullSize
     }
@@ -160,7 +160,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
         let modeStr = mode.description
 
         let timeStr: String
-        if timestamp == Entry.nullTimestamp {
+        if Entry.timestampIsNull(timestamp) {
             timeStr = "-"
         } else {
             timeStr = Entry.canonicalTimestamp(timestamp)
@@ -211,7 +211,7 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// ISO 8601 UTC timestamp string for canonical form, at the second the
     /// time falls in (`wholeSecond`).
     static func canonicalTimestamp(_ date: Date) -> String {
-        if date == nullTimestamp { return "-" }
+        if timestampIsNull(date) { return "-" }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         f.timeZone = TimeZone(identifier: "UTC")
@@ -224,6 +224,19 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
     /// so through 1.0.26 a Date in a second's last half millisecond was
     /// written as the next second (15:06:40.9999998 as :41, and before 1970
     /// −1.0000003 s as 23:59:59Z), where Go writes :40 and 23:59:58Z.
+    /// Whether a time is null at the format's resolution: the second it
+    /// falls in is the epoch. A c4m line carries the second a time falls in,
+    /// and the epoch is null (SPECIFICATION.md, "Timestamp": "-" or "0"), so
+    /// a time inside the epoch second, such as 0.5 s, is null and its line
+    /// is "-". Through 1.0.27 every null test compared the unfloored Date
+    /// with the epoch, so an entry built with such a time was written
+    /// 1970-01-01T00:00:00Z, which reads back as null, and a manifest's C4
+    /// ID differed from the ID of its own text (core's epoch-second vector,
+    /// c4 #192).
+    static func timestampIsNull(_ date: Date) -> Bool {
+        wholeSecond(date) == nullTimestamp
+    }
+
     static func wholeSecond(_ date: Date) -> Date {
         Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
     }

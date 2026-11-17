@@ -93,7 +93,7 @@ public struct Encoder: Sendable {
         let modeStr = entry.mode.description
 
         let timeStr: String
-        if entry.timestamp == Entry.nullTimestamp {
+        if Entry.timestampIsNull(entry.timestamp) {
             timeStr = "-                       "
         } else {
             timeStr = formatTimestampPretty(Entry.wholeSecond(entry.timestamp))
