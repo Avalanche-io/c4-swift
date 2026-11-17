@@ -208,13 +208,30 @@ public struct Entry: Sendable, Hashable, Codable, CustomStringConvertible {
 
     // MARK: - Internal Formatting Helpers
 
-    /// ISO 8601 UTC timestamp string for canonical form.
+    /// ISO 8601 UTC timestamp string for canonical form, at the second the
+    /// time falls in (`wholeSecond`).
     static func canonicalTimestamp(_ date: Date) -> String {
         if date == nullTimestamp { return "-" }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: date)
+        return f.string(from: wholeSecond(date))
+    }
+
+    /// The whole second a time falls in, floored toward negative infinity:
+    /// the second a c4m line carries (SPECIFICATION.md, "Timestamp") and the
+    /// one Go writes. ISO8601DateFormatter rounds to the millisecond first,
+    /// so through 1.0.26 a Date in a second's last half millisecond was
+    /// written as the next second (15:06:40.9999998 as :41, and before 1970
+    /// −1.0000003 s as 23:59:59Z), where Go writes :40 and 23:59:58Z.
+    static func wholeSecond(_ date: Date) -> Date {
+        Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
+    }
+
+    /// Two times are the same at the format's resolution: their c4m lines
+    /// carry the same second.
+    static func sameSecond(_ a: Date, _ b: Date) -> Bool {
+        a.timeIntervalSince1970.rounded(.down) == b.timeIntervalSince1970.rounded(.down)
     }
 
     /// Backslash-escape a name for c4m output.
