@@ -51,7 +51,7 @@ swift build
 swift test
 ```
 
-All 131 tests should pass. There are no external dependencies to install.
+All tests should pass. There are no external dependencies to install.
 
 ## Code Style
 
@@ -117,7 +117,7 @@ No test may skip unnoticed. CI runs `swift test` with swift-testing's event stre
 
 1. Create a branch from `main` for your work.
 2. Keep commits focused and messages concise (single line).
-3. Ensure all 131+ tests pass with `swift test`.
+3. Ensure all tests pass with `swift test`.
 4. Ensure the build succeeds with `swift build`.
 5. Describe what changed and why in the PR description.
 
