@@ -22,13 +22,18 @@ struct EpochSecondVectorTests {
     /// One entry built in memory at t seconds after the epoch: whether it is
     /// null, how its line spells the time, and whether the manifest's ID is
     /// its own text's.
-    private static func built(_ t: TimeInterval) throws -> (null: Bool, field: String, converges: Bool) {
+    private static func built(_ t: TimeInterval) throws -> (null: Bool, field: String, prettyField: String, converges: Bool) {
         let e = Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: t), size: 1, name: "f.txt")
         var m = Manifest()
         m.addEntry(e)
         let text = try Encoder().encode(m)
         let again = try Manifest.unmarshal(text)
-        return (Entry.timestampIsNull(e.timestamp), String(text.split(separator: " ")[1]), m.computeC4ID() == again.computeC4ID())
+        // The pretty form spells the same null and reads back to the same ID.
+        let pretty = try Encoder(pretty: true).encode(m)
+        let prettyField = String(pretty.split(separator: " ", omittingEmptySubsequences: true)[1])
+        let prettyConverges = try Manifest.unmarshal(pretty).computeC4ID() == m.computeC4ID()
+        let field = String(text.split(separator: " ")[1])
+        return (Entry.timestampIsNull(e.timestamp), field, prettyField, m.computeC4ID() == again.computeC4ID() && prettyConverges)
     }
 
     @Test("a built entry is null exactly when its time floors to the epoch second", arguments: [
@@ -39,6 +44,7 @@ struct EpochSecondVectorTests {
         let r = try Self.built(t)
         #expect(r.null == null)
         #expect((r.field == "-") == null, "written \(r.field)")
+        #expect((r.prettyField == "-") == null, "pretty \(r.prettyField)")
         #expect(r.converges)
     }
 
@@ -53,6 +59,19 @@ struct EpochSecondVectorTests {
             #expect(r.null == wantNull, "\(parts[2])")
             #expect(r.converges, "\(parts[2])")
         }
+    }
+
+    @Test("a directory timed inside the epoch second is filled from its children, as a null one is")
+    func directoryInsideTheEpochSecond() throws {
+        func build(_ dirTime: TimeInterval) -> Manifest {
+            var m = Manifest()
+            m.addEntry(Entry(mode: .dir755, timestamp: Date(timeIntervalSince1970: dirTime), size: -1, name: "sub/", depth: 0))
+            m.addEntry(Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 1_750_000_000), size: 1, name: "a.txt", depth: 1))
+            return m
+        }
+        let inside = build(0.5), nullDir = build(0)
+        #expect(inside.computeC4ID() == nullDir.computeC4ID())
+        #expect(try Manifest.unmarshal(try Encoder().encode(inside)).computeC4ID() == inside.computeC4ID())
     }
 
     @Test("saved.c4m resolves to root-id.txt and re-encodes to itself")
