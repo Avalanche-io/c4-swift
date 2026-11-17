@@ -65,13 +65,24 @@ struct EpochSecondVectorTests {
     func directoryInsideTheEpochSecond() throws {
         func build(_ dirTime: TimeInterval) -> Manifest {
             var m = Manifest()
-            m.addEntry(Entry(mode: .dir755, timestamp: Date(timeIntervalSince1970: dirTime), size: -1, name: "sub/", depth: 0))
+            // A known size, so only the time can make the directory null.
+            m.addEntry(Entry(mode: .dir755, timestamp: Date(timeIntervalSince1970: dirTime), size: 10, name: "sub/", depth: 0))
             m.addEntry(Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 1_750_000_000), size: 1, name: "a.txt", depth: 1))
             return m
         }
         let inside = build(0.5), nullDir = build(0)
         #expect(inside.computeC4ID() == nullDir.computeC4ID())
         #expect(try Manifest.unmarshal(try Encoder().encode(inside)).computeC4ID() == inside.computeC4ID())
+    }
+
+    @Test("an entry inside the epoch second has null values, and its own format spells the time -")
+    func entryAPI() {
+        let inside = Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 0.5), size: 1, name: "f.txt")
+        #expect(inside.hasNullValues)
+        #expect(inside.format().split(separator: " ")[1] == "-")
+        let after = Entry(mode: .file644, timestamp: Date(timeIntervalSince1970: 1.5), size: 1, name: "f.txt")
+        #expect(!after.hasNullValues)
+        #expect(after.format().split(separator: " ")[1] == "1970-01-01T00:00:01Z")
     }
 
     @Test("saved.c4m resolves to root-id.txt and re-encodes to itself")
