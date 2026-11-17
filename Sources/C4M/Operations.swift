@@ -318,6 +318,12 @@ public func applyPatch(base: Manifest, patch: Manifest) -> Manifest {
 
 // MARK: - Internal Helpers
 
+// Times compare at the format's resolution, the second a c4m line carries,
+// as Go's entriesEqual and entriesIdentical do. Through 1.0.26 they compared
+// Dates, so a caller-built entry with a fractional time, diffed against the
+// same tree loaded from its c4m, was reported modified; a patch written
+// from that diff restated it, and its line, once encoded, was the base's
+// own, so applying the patch removed the unchanged entry.
 private func entriesEqual(_ a: Entry, _ b: Entry) -> Bool {
     guard sameBytes(a.name, b.name) else { return false }
 
@@ -327,7 +333,7 @@ private func entriesEqual(_ a: Entry, _ b: Entry) -> Bool {
 
     return a.mode == b.mode &&
            a.size == b.size &&
-           a.timestamp == b.timestamp &&
+           Entry.sameSecond(a.timestamp, b.timestamp) &&
            sameBytes(a.target, b.target)
 }
 
@@ -335,7 +341,7 @@ private func entriesIdentical(_ a: Entry, _ b: Entry) -> Bool {
     sameBytes(a.name, b.name) &&
     a.mode == b.mode &&
     a.size == b.size &&
-    a.timestamp == b.timestamp &&
+    Entry.sameSecond(a.timestamp, b.timestamp) &&
     sameBytes(a.target, b.target) &&
     a.c4id == b.c4id &&
     a.hardLink == b.hardLink &&
