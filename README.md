@@ -64,7 +64,7 @@ A **c4m file** is a human-readable text file that describes a filesystem. It cap
 
 ```
 -rw-r--r-- 2025-06-15T12:00:00Z      3 README.md   c45xZeXwMSpq...
-drwxr-xr-x 2025-06-15T12:00:00Z      3 src/        -
+drwxr-xr-x 2025-06-15T12:00:00Z    139 src/        -
   -rw-r--r-- 2025-06-15T12:00:00Z    3 main.swift  c45KgBYEvEE7...
 ```
 
