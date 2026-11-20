@@ -25,7 +25,7 @@ We will acknowledge your report within 48 hours and provide a timeline for a fix
 
 The `Decoder` processes untrusted input. The following protections are in place:
 
-- **Path traversal prevention**: Entry names are validated to reject `..`, `/` separators, `\` separators, and null bytes. The `validate()` method checks for path traversal attacks.
+- **Path traversal prevention**: a name that is a path is refused: `.`, `..`, an empty name, or one holding `/` anywhere but a directory's trailing slash, and names holding NUL. A backslash is a literal name character. The `validate()` method checks every entry.
 - **Duplicate path detection**: `validate()` rejects manifests with duplicate full paths.
 - **CR rejection**: Lines containing CR (0x0D) bytes are rejected. C4m requires LF-only line endings.
 - **Directive rejection**: Lines starting with `@` are rejected to prevent injection of unsupported directives.
